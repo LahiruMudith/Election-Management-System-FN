@@ -85,7 +85,7 @@ async function handleGoogleResult(result : UserCredential | null | undefined) {
 
         alert(data.message);
         if (data.status === 200) {
-            window.location.href = "/voter-dashboard";
+            window.location.href = `/voter-dashboard`;
         } else {
             console.log("Error:", data.message);
         }
