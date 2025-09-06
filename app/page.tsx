@@ -350,7 +350,7 @@ export default function LandingPage() {
                           </div>
                         </div>
 
-                      <div className="grid grid-cols-2 gap-4">
+                      <div className="grid grid-cols-1 gap-4">
                           <Button variant="outline" onClick={signInWithGoogle}>
                             <svg className="mr-2 h-4 w-4" viewBox="0 0 24 24">
                               {/* ...Google SVG paths... */}
@@ -373,7 +373,6 @@ export default function LandingPage() {
                             </svg>
                             Google
                           </Button>
-                          <Button variant="outline">📱 Phone</Button>
                         </div>
                     </CardContent>
                   </Card>
