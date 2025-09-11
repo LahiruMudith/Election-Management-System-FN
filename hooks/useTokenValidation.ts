@@ -1,4 +1,3 @@
-// hooks/useTokenValidation.ts
 import { useEffect, useState } from "react";
 
 export function useTokenValidation() {
@@ -22,8 +21,14 @@ export function useTokenValidation() {
                 credentials: "include",
             })
                 .then((res) => res.json())
-                .then((data) => setIsValid(data.status === 200))
-                .catch(() => setIsValid(false));
+                .then((data) => {
+                    setIsValid(data.status === 200);
+                    console.log(data)
+                })
+                .catch((error) => {
+                    // Network or server error: it's safer to treat as invalid
+                    setIsValid(false);
+                });
         } else {
             setIsValid(false);
         }

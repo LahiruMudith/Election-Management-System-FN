@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import React, {useRef, useState} from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -10,8 +10,12 @@ import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { UserPlus, ArrowLeft, CheckCircle, Info, User, Mail, FileText, Shield, Upload, Camera } from "lucide-react"
 import Link from "next/link"
+import toast from 'react-hot-toast';
+import Webcam from "react-webcam";
+import SelfieCapture from "./SelfieCapture";
 
 export default function RegisterCandidatePage() {
+  const [showWebcam, setShowWebcam] = useState(false);
   const [currentStep, setCurrentStep] = useState(1)
   const [formData, setFormData] = useState({
     // Step 1: Account Setup
@@ -25,6 +29,17 @@ export default function RegisterCandidatePage() {
     age: "",
     profession: "",
     manifesto: "",
+
+    // "fullName": "Lahiru Mudith",
+    // "age": 45,
+    // "profession": "Lawyer",
+    // "manifesto": "I will work to improve education, healthcare, and public transport.",
+    // "isApproved": true,
+    // "isActive": true,
+    // "createdAt": "2025-08-28T10:30:00.000+05:30",
+    // "nicFrontImg": "base64EncodedFrontImageStringOrURL",
+    // "nicBackImg": "base64EncodedBackImageStringOrURL",
+    // "selfieImg": "base64EncodedSelfieImageStringOrURL"
 
     // Step 3: Document Upload
     idFront: null as File | null,
@@ -41,19 +56,78 @@ export default function RegisterCandidatePage() {
   const [isSubmitted, setIsSubmitted] = useState(false)
 
   const handleInputChange = (field: string, value: string) => {
-    setFormData((prev) => ({ ...prev, [field]: value }))
+    setFormData((prev) => ({...prev, [field]: value}))
   }
 
-  const handleFileUpload = (fileType: "idFront" | "idBack" | "selfie") => {
-    // Simulate file upload
-    const mockFile = new File([""], `${fileType}.jpg`, { type: "image/jpeg" })
-    setFormData((prev) => ({ ...prev, [fileType]: mockFile }))
-    setUploadedFiles((prev) => ({ ...prev, [fileType]: true }))
+  const fileInputRefs = {
+    idFront: React.useRef<HTMLInputElement>(null),
+    idBack: React.useRef<HTMLInputElement>(null),
+    selfie: React.useRef<HTMLInputElement>(null),
   }
 
-  const handleSubmit = () => {
-    setIsSubmitted(true)
+  const handleFileUpload = (fileType: "idFront" | "idBack" | "selfie", file?: File) => {
+    if (file) {
+      setFormData((prev) => ({...prev, [fileType]: file}))
+      setUploadedFiles((prev) => ({...prev, [fileType]: true}))
+
+    } else {
+      // Open the file picker
+      fileInputRefs[fileType].current?.click()
+    }
   }
+
+  const handleSubmit = async () => {
+    const data = new FormData();
+    data.append("email", formData.email);
+    data.append("username", formData.username);
+    data.append("password", formData.password);
+    data.append("fullName", formData.fullName);
+    data.append("age", formData.age);
+    data.append("profession", formData.profession);
+    data.append("manifesto", formData.manifesto);
+    data.append("idFront", formData.idFront as File);
+    data.append("idBack", formData.idBack as File);
+    data.append("selfie", formData.selfie as File);
+
+    try {
+      const response = await fetch("http://localhost:8080/api/log/registerCandidate", {
+        method: "POST",
+        body: data,
+        credentials: 'include',
+        // DO NOT set Content-Type, browser will set correct boundary
+      });
+
+      let responseData = null;
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        responseData = await response.json();
+      } else {
+        const text = await response.text();
+        responseData = text ? text : null;
+      }
+      console.log("Response Data:", responseData);
+      console.log("Response Status:", response.status);
+
+      if (!response.ok) {
+        const errorMsg = typeof responseData === 'string'
+            ? responseData
+            : (responseData && responseData.message)
+                ? responseData.message
+                : "Failed to submit registration. Please try again.";
+        toast.error(errorMsg);
+        return;
+      }
+
+      const successMsg = (responseData && responseData.message)
+          ? responseData.message
+          : "Candidate registered successfully!";
+      toast.success(successMsg);
+      setIsSubmitted(true);
+    } catch (err) {
+      console.log(err as Error)
+      toast.error("Submission failed: " + (err as Error).message);
+    }
+  };
 
   const canProceedToStep2 = () => {
     return formData.email && formData.username && formData.password && formData.confirmPassword
@@ -382,88 +456,178 @@ export default function RegisterCandidatePage() {
               <CardContent className="space-y-6">
                 {/* ID Front Upload */}
                 <div
-                  className={`border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors ${
-                    uploadedFiles.idFront
-                      ? "border-green-300 bg-green-50"
-                      : "border-gray-300 hover:border-blue-400 hover:bg-blue-50"
-                  }`}
-                  onClick={() => handleFileUpload("idFront")}
+                    className={`border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors ${
+                        uploadedFiles.idFront
+                            ? "border-green-300 bg-green-50"
+                            : "border-gray-300 hover:border-blue-400 hover:bg-blue-50"
+                    }`}
+                    onClick={() => handleFileUpload("idFront")}
                 >
                   {uploadedFiles.idFront ? (
-                    <div className="space-y-3">
-                      <CheckCircle className="h-16 w-16 text-green-600 mx-auto" />
-                      <div>
-                        <p className="text-lg font-semibold text-green-700">ID Front Uploaded</p>
-                        <p className="text-sm text-green-600">Click to replace</p>
+                      <div className="space-y-3">
+                        <CheckCircle className="h-16 w-16 text-green-600 mx-auto"/>
+                        <div>
+                          <p className="text-lg font-semibold text-green-700">ID Front Uploaded</p>
+                          <p className="text-sm text-green-600">Click to replace</p>
+                        </div>
                       </div>
-                    </div>
                   ) : (
-                    <div className="space-y-3">
-                      <FileText className="h-16 w-16 text-gray-400 mx-auto" />
-                      <div>
-                        <p className="text-lg font-semibold text-gray-700">Upload ID Front Side</p>
-                        <p className="text-sm text-gray-500">Click to upload front side of your National ID</p>
-                        <p className="text-xs text-gray-400 mt-2">JPG, PNG up to 5MB</p>
+                      <div className="space-y-3">
+                        <FileText className="h-16 w-16 text-gray-400 mx-auto"/>
+                        <div>
+                          <p className="text-lg font-semibold text-gray-700">Upload ID Front Side</p>
+                          <p className="text-sm text-gray-500">Click to upload front side of your National ID</p>
+                          <p className="text-xs text-gray-400 mt-2">JPG, PNG up to 5MB</p>
+                        </div>
                       </div>
-                    </div>
                   )}
+                  <input
+                      type="file"
+                      accept="image/*"
+                      style={{display: "none"}}
+                      ref={fileInputRefs.idFront}
+                      onChange={e => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          if (file.size > 5 * 1024 * 1024) { // 5MB in bytes
+                            toast.error("File size must be 5MB or less.");
+                            return;
+                          }
+                          toast.success("File uploaded successfully!");
+                          console.log(file);
+                          handleFileUpload("idFront", file);
+                        }
+                      }}
+                  />
                 </div>
 
                 {/* ID Back Upload */}
                 <div
-                  className={`border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors ${
-                    uploadedFiles.idBack
-                      ? "border-green-300 bg-green-50"
-                      : "border-gray-300 hover:border-blue-400 hover:bg-blue-50"
-                  }`}
-                  onClick={() => handleFileUpload("idBack")}
+                    className={`border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors ${
+                        uploadedFiles.idBack
+                            ? "border-green-300 bg-green-50"
+                            : "border-gray-300 hover:border-blue-400 hover:bg-blue-50"
+                    }`}
+                    onClick={() => handleFileUpload("idBack")}
                 >
                   {uploadedFiles.idBack ? (
-                    <div className="space-y-3">
-                      <CheckCircle className="h-16 w-16 text-green-600 mx-auto" />
-                      <div>
-                        <p className="text-lg font-semibold text-green-700">ID Back Uploaded</p>
-                        <p className="text-sm text-green-600">Click to replace</p>
+                      <div className="space-y-3">
+                        <CheckCircle className="h-16 w-16 text-green-600 mx-auto"/>
+                        <div>
+                          <p className="text-lg font-semibold text-green-700">ID Back Uploaded</p>
+                          <p className="text-sm text-green-600">Click to replace</p>
+                        </div>
                       </div>
-                    </div>
                   ) : (
-                    <div className="space-y-3">
-                      <FileText className="h-16 w-16 text-gray-400 mx-auto" />
-                      <div>
-                        <p className="text-lg font-semibold text-gray-700">Upload ID Back Side</p>
-                        <p className="text-sm text-gray-500">Click to upload back side of your National ID</p>
-                        <p className="text-xs text-gray-400 mt-2">JPG, PNG up to 5MB</p>
+                      <div className="space-y-3">
+                        <FileText className="h-16 w-16 text-gray-400 mx-auto"/>
+                        <div>
+                          <p className="text-lg font-semibold text-gray-700">Upload ID Back Side</p>
+                          <p className="text-sm text-gray-500">Click to upload back side of your National ID</p>
+                          <p className="text-xs text-gray-400 mt-2">JPG, PNG up to 5MB</p>
+                        </div>
                       </div>
-                    </div>
                   )}
+                  <input
+                      type="file"
+                      accept="image/*"
+                      style={{display: "none"}}
+                      ref={fileInputRefs.idBack}
+                      onChange={e => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          if (file.size > 5 * 1024 * 1024) { // 5MB in bytes
+                            toast.error("File size must be 5MB or less.");
+                            return;
+                          }
+                          toast.success("File uploaded successfully!");
+                          console.log(file);
+                          handleFileUpload("idBack", file);
+                        }
+                      }}
+                  />
                 </div>
 
                 {/* Selfie Upload */}
                 <div
-                  className={`border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors ${
-                    uploadedFiles.selfie
-                      ? "border-green-300 bg-green-50"
-                      : "border-gray-300 hover:border-blue-400 hover:bg-blue-50"
-                  }`}
-                  onClick={() => handleFileUpload("selfie")}
+                    className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
+                        uploadedFiles.selfie
+                            ? "border-green-300 bg-green-50"
+                            : "border-gray-300 hover:border-blue-400 hover:bg-blue-50"
+                    }`}
                 >
                   {uploadedFiles.selfie ? (
-                    <div className="space-y-3">
-                      <CheckCircle className="h-16 w-16 text-green-600 mx-auto" />
-                      <div>
-                        <p className="text-lg font-semibold text-green-700">Selfie Photo Uploaded</p>
-                        <p className="text-sm text-green-600">Click to replace</p>
+                      <div className="space-y-3">
+                        <CheckCircle className="h-16 w-16 text-green-600 mx-auto"/>
+                        <div>
+                          <p className="text-lg font-semibold text-green-700">Selfie Photo Uploaded</p>
+                          <p className="text-sm text-green-600">Click to replace</p>
+                        </div>
+                        <button
+                            onClick={() => {
+                              setUploadedFiles((prev) => ({ ...prev, selfie: false }));
+                              setFormData((prev) => ({ ...prev, selfie: null }));
+                            }}
+                            className="mt-2 underline text-sm text-blue-600"
+                            type="button"
+                        >
+                          Remove and re-upload
+                        </button>
                       </div>
-                    </div>
+                  ) : showWebcam ? (
+                      <SelfieCapture
+                          onCapture={(file) => {
+                            console.log(file);
+                            handleFileUpload("selfie", file);
+                            setShowWebcam(false);
+                          }}
+                          onCancel={() => setShowWebcam(false)}
+                      />
                   ) : (
-                    <div className="space-y-3">
-                      <Camera className="h-16 w-16 text-gray-400 mx-auto" />
-                      <div>
-                        <p className="text-lg font-semibold text-gray-700">Upload Selfie Photo</p>
-                        <p className="text-sm text-gray-500">Take or upload a clear selfie for verification</p>
-                        <p className="text-xs text-gray-400 mt-2">JPG, PNG up to 5MB</p>
-                      </div>
-                    </div>
+                      <>
+                        <Camera className="h-16 w-16 text-gray-400 mx-auto" />
+                        <div>
+                          <p className="text-lg font-semibold text-gray-700">Upload Selfie Photo</p>
+                          <p className="text-sm text-gray-500">Take or upload a clear selfie for verification</p>
+                          <p className="text-xs text-gray-400 mt-2">JPG, PNG up to 5MB</p>
+                        </div>
+
+                        <div className="flex flex-col items-center gap-2 mt-4">
+                          <button
+                              onClick={() => setShowWebcam(true)}
+                              className="bg-blue-600 text-white px-4 py-2 rounded"
+                              type="button"
+                          >
+                            Take a Selfie
+                          </button>
+                          <span className="text-gray-500 text-xs">or</span>
+                          <button
+                              onClick={() => fileInputRefs.selfie.current?.click()}
+                              className="bg-gray-100 px-4 py-2 rounded border"
+                              type="button"
+                          >
+                            Upload File
+                          </button>
+                          <input
+                              type="file"
+                              accept="image/*"
+                              style={{ display: "none" }}
+                              ref={fileInputRefs.selfie}
+                              onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                if (file) {
+                                  if (file.size > 5 * 1024 * 1024) {
+                                    toast.error("File size must be 5MB or less.");
+                                    return;
+                                  }
+                                  console.log(file);
+                                  toast.success("File uploaded successfully!");
+                                  handleFileUpload("selfie", file);
+                                }
+                              }}
+                          />
+                        </div>
+                      </>
                   )}
                 </div>
 
@@ -529,9 +693,9 @@ export default function RegisterCandidatePage() {
                     Back
                   </Button>
                   <Button
-                    onClick={handleSubmit}
-                    disabled={!canSubmit()}
-                    className={`px-8 ${canSubmit() ? "bg-green-600 hover:bg-green-700" : ""}`}
+                      onClick={handleSubmit}
+                      disabled={!canSubmit()}
+                      className={`px-8 ${canSubmit() ? "bg-green-600 hover:bg-green-700" : ""}`}
                   >
                     <CheckCircle className="h-4 w-4 mr-2" />
                     Submit Application

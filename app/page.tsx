@@ -332,7 +332,7 @@ export default function LandingPage() {
                         )}
                         <Button
                             type="submit"
-                            className="w-full bg-blue-600 hover:bg-blue-700"
+                            className="w-full mt-2 bg-blue-600 hover:bg-blue-700"
                             disabled={loginLoading}
                         >
                           {loginLoading ? t.login + "..." : t.login}

@@ -1,18 +1,21 @@
 "use client"
 
-import {useEffect, useState} from "react"
+import React, {useEffect, useState} from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Bell, Vote, Clock, CheckCircle, AlertCircle, User, History, Settings } from "lucide-react"
+import {Bell, Vote, Clock, CheckCircle, AlertCircle, User, History, Settings, AlertTriangle} from "lucide-react"
 import Link from "next/link"
 import LoginPage from "../page";
 import { useTokenValidation } from "@/hooks/useTokenValidation";
+import Cookies from "js-cookie";
+
 
 
 export default function VoterDashboard() {
   const { isValid } = useTokenValidation();
+  const nicVerified = false;
 
 
   const [notifications] = useState([
@@ -59,8 +62,19 @@ export default function VoterDashboard() {
     },
   ])
 
+  if (isValid === null) {
+    // Still loading, don't redirect or render protected content yet
+    return <div>Loading...</div>;
+  }
+
   if (!isValid) {
-    return <LoginPage />;
+    // Not valid, redirect to login
+    window.location.href = "/";
+    Cookies.remove("token");
+    Cookies.remove("role");
+    Cookies.remove("username");
+
+    return null; // prevent rendering rest of component
   }
 
   return (
@@ -124,12 +138,20 @@ export default function VoterDashboard() {
                   </div>
                 </div>
                 <div className="pt-4 border-t">
-                  <Button variant="outline" className="w-full mb-2 bg-transparent">
-                    <User className="h-4 w-4 mr-2" />
+                  <Button variant="outline" className="w-full mb-1 bg-transparent">
+                    <User className="h-4 w-4 mr-2"/>
                     Edit Profile
                   </Button>
-                  <Button variant="outline" className="w-full bg-transparent">
-                    <Settings className="h-4 w-4 mr-2" />
+                  {!nicVerified && (
+                      <Link href="/verify">
+                        <Button variant="outline" className="w-full mb-1 bg-transparent">
+                          <AlertTriangle className="h-4 w-4 mr-2"/>
+                          Verify NIC
+                        </Button>
+                      </Link>
+                  )}
+                  <Button variant="outline" className="w-full mb-1 bg-transparent">
+                    <Settings className="h-4 w-4 mr-2"/>
                     Settings
                   </Button>
                 </div>
@@ -148,7 +170,7 @@ export default function VoterDashboard() {
 
               {/* Notifications */}
               <Card>
-                <CardHeader>
+              <CardHeader>
                   <CardTitle className="flex items-center">
                     <Bell className="h-5 w-5 mr-2" />
                     Recent Notifications
