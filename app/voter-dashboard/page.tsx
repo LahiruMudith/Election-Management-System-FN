@@ -5,18 +5,21 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import {Bell, Vote, Clock, CheckCircle, AlertCircle, User, History, Settings, AlertTriangle} from "lucide-react"
+import {Bell, Vote, Clock, CheckCircle, AlertCircle, User, History, Settings, AlertTriangle, Ban} from "lucide-react"
 import Link from "next/link"
 import LoginPage from "../page";
 import { useTokenValidation } from "@/hooks/useTokenValidation";
 import Cookies from "js-cookie";
-
+import { useVoterDetails } from "@/hooks/getVoterDetails";
+import toast from "react-hot-toast";
 
 
 export default function VoterDashboard() {
   const { isValid } = useTokenValidation();
   const nicVerified = false;
-
+  const token = Cookies.get("token") || null;
+  const { voter, loading, error } = useVoterDetails(token);
+  console.log(voter)
 
   const [notifications] = useState([
     { id: 1, message: "Presidential Election voting is now open", type: "info", time: "2 hours ago" },
@@ -62,6 +65,46 @@ export default function VoterDashboard() {
     },
   ])
 
+  const statusMap = {
+    PENDING: {
+      bg: "bg-yellow-50",
+      text: "text-yellow-700",
+      border: "border-yellow-200",
+      icon: <Clock className="h-3 w-3 mr-1 text-yellow-700" />,
+      label: "Pending"
+    },
+    VERIFIED: {
+      bg: "bg-green-50",
+      text: "text-green-700",
+      border: "border-green-200",
+      icon: <CheckCircle className="h-3 w-3 mr-1 text-green-700" />,
+      label: "Verified"
+    },
+    SUSPENDED: {
+      bg: "bg-orange-50",
+      text: "text-orange-700",
+      border: "border-orange-200",
+      icon: <AlertCircle className="h-3 w-3 mr-1 text-orange-700" />,
+      label: "Suspended"
+    },
+    DEACTIVATED: {
+      bg: "bg-red-50",
+      text: "text-red-700",
+      border: "border-red-200",
+      icon: <Ban className="h-3 w-3 mr-1 text-red-700" />,
+      label: "Deactivated"
+    }
+  };
+
+// Fallback for unknown status
+  const badgeProps = statusMap[voter?.verified as keyof typeof statusMap] || {
+    bg: "bg-gray-50",
+    text: "text-gray-700",
+    border: "border-gray-200",
+    icon: <AlertCircle className="h-3 w-3 mr-1 text-gray-700" />,
+    label: "Unknown"
+  };
+
   if (isValid === null) {
     // Still loading, don't redirect or render protected content yet
     return <div>Loading...</div>;
@@ -76,6 +119,12 @@ export default function VoterDashboard() {
 
     return null; // prevent rendering rest of component
   }
+
+  if (!loading && voter === null) {
+    toast.error("Failed to load voter details. Please log in again.");
+    return null;
+  }
+
 
   return (
       <div className="min-h-screen bg-gray-50">
@@ -115,26 +164,26 @@ export default function VoterDashboard() {
                   <AvatarImage src="/placeholder.svg?height=80&width=80" />
                   <AvatarFallback className="text-2xl">JD</AvatarFallback>
                 </Avatar>
-                <CardTitle>John Doe</CardTitle>
-                <CardDescription>Voter ID: 123456789V</CardDescription>
-                <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
-                  <CheckCircle className="h-3 w-3 mr-1" />
-                  Verified
+                <CardTitle>{voter?.fullName}</CardTitle>
+                <CardDescription>Voter ID: {voter?.nicNumber}</CardDescription>
+                <Badge variant="outline" className={`${badgeProps.bg} ${badgeProps.text} ${badgeProps.border}`}>
+                  {badgeProps.icon}
+                  {badgeProps.label}
                 </Badge>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="space-y-2">
                   <div className="flex justify-between text-sm">
                     <span>District:</span>
-                    <span className="font-medium">Colombo</span>
+                    <span className="font-medium">{voter?.district}</span>
                   </div>
+                  {/*<div className="flex justify-between text-sm">*/}
+                  {/*  <span>Registration Date:</span>*/}
+                  {/*  <span className="font-medium">{}</span>*/}
+                  {/*</div>*/}
                   <div className="flex justify-between text-sm">
-                    <span>Polling Division:</span>
-                    <span className="font-medium">Colombo Central</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span>Registration Date:</span>
-                    <span className="font-medium">Jan 15, 2024</span>
+                    <span>Phone Number:</span>
+                    <span className="font-medium">{voter?.phoneNumber}</span>
                   </div>
                 </div>
                 <div className="pt-4 border-t">
@@ -164,7 +213,7 @@ export default function VoterDashboard() {
             <div className="space-y-8">
               {/* Welcome Section */}
               <div>
-                <h1 className="text-3xl font-bold text-gray-900 mb-2">Welcome back, John!</h1>
+                <h1 className="text-3xl font-bold text-gray-900 mb-2">Welcome back, {voter?.fullName?.split(" ")[0]}!</h1>
                 <p className="text-gray-600">Stay updated with active elections and cast your vote securely.</p>
               </div>
 

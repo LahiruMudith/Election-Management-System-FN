@@ -13,7 +13,14 @@ export function useTokenValidation() {
 
     useEffect(() => {
         const t = getCookie("token");
+        const u = getCookie("username");
+        const r = getCookie("role");
         setToken(t || null);
+
+        if (!t || !u || !r) {
+            setIsValid(false);
+            return;
+        }
 
         if (t) {
             fetch(`http://localhost:8080/api/log/checkToken?token=${encodeURIComponent(t)}`, {
@@ -23,7 +30,6 @@ export function useTokenValidation() {
                 .then((res) => res.json())
                 .then((data) => {
                     setIsValid(data.status === 200);
-                    console.log(data)
                 })
                 .catch((error) => {
                     // Network or server error: it's safer to treat as invalid
