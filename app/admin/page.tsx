@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import React, { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -25,8 +25,13 @@ import {
   Activity,
 } from "lucide-react"
 import Link from "next/link"
+import { useTokenValidation } from "@/hooks/useTokenValidation";
+import Cookies from "js-cookie";
+import toast from "react-hot-toast";
+
 
 export default function AdminDashboard() {
+  const { isValid } = useTokenValidation();
   const [activeTab, setActiveTab] = useState("overview")
 
   const stats = {
@@ -83,6 +88,22 @@ export default function AdminDashboard() {
     },
     { id: 4, action: "System backup completed", user: "System", time: "6 hours ago", type: "system" },
   ]
+
+
+  if (isValid === null) {
+    // Still loading, don't redirect or render protected content yet
+    return <div>Loading...</div>;
+  }
+
+  if (!isValid) {
+    // Not valid, redirect to login
+    window.location.href = "/";
+    Cookies.remove("token");
+    Cookies.remove("role");
+    Cookies.remove("username");
+
+    return null; // prevent rendering rest of component
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">

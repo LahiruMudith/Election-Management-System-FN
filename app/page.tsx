@@ -104,7 +104,15 @@ export default function LandingPage() {
 
       alert(data.message);
 
-      window.location.href = `/voter-dashboard`;
+      if (data.data.role === "USER") {
+        window.location.href = `/voter-dashboard`;
+      }else if (data.data.role === "ADMIN") {
+        window.location.href = `/admin`;
+      }else if (data.data.role === "CANDIDATE") {
+        window.location.href = `/candidate-dashboard`;
+      }
+
+
     }  catch (err) {
       if (err instanceof Error) setLoginError(err.message);
       else setLoginError("Unknown error");
