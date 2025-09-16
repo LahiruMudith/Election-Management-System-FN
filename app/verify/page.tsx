@@ -44,7 +44,7 @@ interface RegistrationData {
 }
 
 export default function NICVerifyPage() {
-  const { isValid } = useTokenValidation();
+  const { isValid,loading} = useTokenValidation();
   // Step state
   const [currentStep, setCurrentStep] = useState(1)
   // Registration form state
@@ -261,6 +261,10 @@ export default function NICVerifyPage() {
         </CardContent>
       </Card>
   )
+
+  if (loading || isValid === null) {
+    return <div>Checking session…</div>;
+  }
 
   if (!isValid) {
     window.location.href = "/";

@@ -16,7 +16,7 @@ import {useElectionDetails} from "@/hooks/getElectionDetails";
 
 
 export default function VoterDashboard() {
-  const { isValid } = useTokenValidation();
+  const { isValid, loading } = useTokenValidation();
   // const nicVerified = false;
   const token = Cookies.get("token") || null;
   const { voter, loading : voterLoading, error : voterError } = useVoterDetails(token);
@@ -129,6 +129,10 @@ export default function VoterDashboard() {
   if (isValid === null) {
     // Still loading, don't redirect or render protected content yet
     return <div>Loading...</div>;
+  }
+
+  if (loading || isValid === null) {
+    return <div>Checking session…</div>;
   }
 
   if (!isValid) {

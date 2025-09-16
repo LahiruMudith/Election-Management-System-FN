@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState } from "react"
+import React, {useEffect, useMemo, useState} from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -23,19 +23,93 @@ import {
   Shield,
   Database,
   Activity,
+  BookCheck,
 } from "lucide-react"
 import Link from "next/link"
 import { useTokenValidation } from "@/hooks/useTokenValidation";
 import Cookies from "js-cookie";
 import toast from "react-hot-toast";
+import getAllVoters, {Voter} from "@/hooks/getAllVoters";
+import { useVoterImages } from "@/hooks/getVoterPics";
+import { exportVotersToPDF } from "../utils/exportVotersToPDF";
+import jsPDF from "jspdf";
+import "jspdf-autotable";
 
+
+
+type ActiveList = "pending" | "verified" | "rejected" | null;
+
+const fmt = new Intl.NumberFormat("en-US");
 
 export default function AdminDashboard() {
   const { isValid } = useTokenValidation();
   const [activeTab, setActiveTab] = useState("overview")
+  const { voters, loading: votersLoading, error: votersError } = getAllVoters(Cookies.get("token") ?? null);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [selectedVoter, setSelectedVoter] = useState<Voter | null>(null);
+  const [fullscreenSrc, setFullscreenSrc] = useState<string | null>(null);
+  const { images, loading: imagesLoading, error: imagesError, reload: reloadImages } = useVoterImages(selectedVoter?.nicNumber ?? null, Cookies.get("token") ?? null);
+
+  const token = Cookies.get("token") ?? null;
+
+  // Normalize status for safer filtering
+  const normalize = (s?: string) => (s ? s.trim().toUpperCase() : "");
+
+  const pendingVotersCard = useMemo(
+      () => voters.filter((v: Voter) => normalize(v.verified) === "PENDING"),
+      [voters]
+  );
+  const verifiedVotersCard = useMemo(
+      () => voters.filter((v: Voter) => normalize(v.verified) === "VERIFIED"),
+      [voters]
+  );
+  const rejectedVotersCard = useMemo(
+      () => voters.filter((v: Voter) => normalize(v.verified) === "REJECTED"),
+      [voters]
+  );
+
+  const [activeList, setActiveList] = useState<ActiveList>(null);
+
+  const listToShow = activeList === "pending"
+      ? pendingVotersCard
+      : activeList === "verified"
+          ? verifiedVotersCard
+          : activeList === "rejected"
+              ? rejectedVotersCard
+              : [];
+
+
+  useEffect(() => {
+    const anyOverlayOpen = modalOpen || Boolean(fullscreenSrc);
+    if (!anyOverlayOpen) return;
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setFullscreenSrc(null);
+        setModalOpen(false);
+      }
+    };
+
+    // lock scroll
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [modalOpen, fullscreenSrc]);
+
+  // optional: refresh images when the modal opens
+  useEffect(() => {
+    if (modalOpen && selectedVoter?.nicNumber) {
+      void reloadImages();
+    }
+  }, [modalOpen, selectedVoter?.nicNumber, reloadImages]);
 
   const stats = {
-    totalVoters: 2847563,
+    totalVoters: voters.length,
     verifiedVoters: 2698432,
     activeElections: 2,
     completedElections: 15,
@@ -95,6 +169,45 @@ export default function AdminDashboard() {
     return <div>Loading...</div>;
   }
 
+  function getCountForMonth(data: any[], year: number, month: number) {
+    return data.filter(item => {
+      const date = new Date(item.creatAt);
+      return date.getFullYear() === year && date.getMonth() === month;
+    }).length;
+  }
+
+  const now = new Date();
+  const currentMonth = now.getMonth(); // 0-indexed (0 = Jan)
+  const currentYear = now.getFullYear();
+  const lastMonth = currentMonth === 0 ? 11 : currentMonth - 1;
+  const lastMonthYear = currentMonth === 0 ? currentYear - 1 : currentYear;
+
+  const currentMonthCount = getCountForMonth(voters, currentYear, currentMonth);
+  const lastMonthCount = getCountForMonth(voters, lastMonthYear, lastMonth);
+
+  let percentChange = 0;
+  if (lastMonthCount > 0) {
+    percentChange = ((currentMonthCount - lastMonthCount) / lastMonthCount) * 100;
+  }
+  const formatted =
+      lastMonthCount === 0
+          ? "0% from last month"
+          : `${percentChange > 0 ? "+" : ""}${percentChange.toFixed(1)}% from last month`;
+
+  // Defensive: voters might be undefined while loading
+  const totalVoters = voters?.length ?? 0;
+  const verifiedVoters = voters?.filter(voter => voter.verified === "VERIFIED").length ?? 0;
+  const verificationRate = totalVoters > 0 ? (verifiedVoters / totalVoters) * 100 : 0;
+
+// Filter elections that are in progress
+  const electionsInProgress = elections.filter(
+      (election) =>
+          election.status === "VOTING_OPEN" || election.status === "COUNTING"
+  );
+
+  const inProgressCount = electionsInProgress.length;
+
+
   if (!isValid) {
     // Not valid, redirect to login
     window.location.href = "/";
@@ -150,7 +263,7 @@ export default function AdminDashboard() {
           {/* Overview Tab */}
           <TabsContent value="overview" className="space-y-6">
             {/* Stats Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                   <CardTitle className="text-sm font-medium">Total Voters</CardTitle>
@@ -158,7 +271,7 @@ export default function AdminDashboard() {
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold">{stats.totalVoters.toLocaleString()}</div>
-                  <p className="text-xs text-muted-foreground">+2.5% from last month</p>
+                  <p className="text-xs text-muted-foreground">{formatted}</p>
                 </CardContent>
               </Card>
 
@@ -168,8 +281,10 @@ export default function AdminDashboard() {
                   <CheckCircle className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold">{stats.verifiedVoters.toLocaleString()}</div>
-                  <p className="text-xs text-muted-foreground">94.8% verification rate</p>
+                  <div className="text-2xl font-bold">{verifiedVoters.toLocaleString()}</div>
+                  <p className="text-xs text-muted-foreground">
+                    {verificationRate.toFixed(1)}% verification rate
+                  </p>
                 </CardContent>
               </Card>
 
@@ -180,18 +295,9 @@ export default function AdminDashboard() {
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold">{stats.activeElections}</div>
-                  <p className="text-xs text-muted-foreground">2 elections in progress</p>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">System Uptime</CardTitle>
-                  <Activity className="h-4 w-4 text-muted-foreground" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">{stats.systemUptime}</div>
-                  <p className="text-xs text-muted-foreground">Last 30 days</p>
+                  <p className="text-xs text-muted-foreground">
+                    {inProgressCount} election{inProgressCount !== 1 ? "s" : ""} in progress
+                  </p>
                 </CardContent>
               </Card>
             </div>
@@ -353,53 +459,216 @@ export default function AdminDashboard() {
             <div className="flex justify-between items-center">
               <h2 className="text-2xl font-bold">Voter Management</h2>
               <div className="flex space-x-2">
-                <Input placeholder="Search voters..." className="w-64" />
-                <Button variant="outline">Export</Button>
+                {/*<Input placeholder="Search voters..." className="w-64"/>*/}
+                <Button onClick={() => exportVotersToPDF(voters)}>
+                  Export All Voters to PDF
+                </Button>
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-lg">Pending Verifications</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-3xl font-bold text-orange-600 mb-2">1,247</div>
-                  <p className="text-sm text-gray-600">Voters awaiting verification</p>
-                  <Button className="w-full mt-4 bg-transparent" variant="outline">
-                    Review Pending
-                  </Button>
-                </CardContent>
-              </Card>
+            <div className="space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-lg">Pending Verifications</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    {votersLoading ? (
+                        <div className="h-8 w-28 bg-gray-200 rounded animate-pulse mb-2"/>
+                    ) : (
+                        <div className="text-3xl font-bold text-orange-600 mb-2">
+                          {fmt.format(pendingVotersCard.length)}
+                        </div>
+                    )}
+                    <p className="text-sm text-gray-600">Voters awaiting verification</p>
+                    <Button
+                        className="w-full mt-4 bg-transparent"
+                        variant="outline"
+                        onClick={() => setActiveList("pending")}
+                        disabled={votersLoading || pendingVotersCard.length === 0}
+                    >
+                      Review Pending
+                    </Button>
+                  </CardContent>
+                </Card>
 
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-lg">Verified Voters</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-3xl font-bold text-green-600 mb-2">2,698,432</div>
-                  <p className="text-sm text-gray-600">Successfully verified voters</p>
-                  <Button className="w-full mt-4 bg-transparent" variant="outline">
-                    View All
-                  </Button>
-                </CardContent>
-              </Card>
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-lg">Verified Voters</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    {votersLoading ? (
+                        <div className="h-8 w-36 bg-gray-200 rounded animate-pulse mb-2"/>
+                    ) : (
+                        <div className="text-3xl font-bold text-green-600 mb-2">
+                          {fmt.format(verifiedVotersCard.length)}
+                        </div>
+                    )}
+                    <p className="text-sm text-gray-600">Successfully verified voters</p>
+                    <Button
+                        className="w-full mt-4 bg-transparent"
+                        variant="outline"
+                        onClick={() => setActiveList("verified")}
+                        disabled={votersLoading || verifiedVotersCard.length === 0}
+                    >
+                      View All
+                    </Button>
+                  </CardContent>
+                </Card>
 
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-lg">Rejected Applications</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-3xl font-bold text-red-600 mb-2">1,884</div>
-                  <p className="text-sm text-gray-600">Applications rejected</p>
-                  <Button className="w-full mt-4 bg-transparent" variant="outline">
-                    Review Rejected
-                  </Button>
-                </CardContent>
-              </Card>
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-lg">Rejected Applications</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    {votersLoading ? (
+                        <div className="h-8 w-28 bg-gray-200 rounded animate-pulse mb-2"/>
+                    ) : (
+                        <div className="text-3xl font-bold text-red-600 mb-2">
+                          {fmt.format(rejectedVotersCard.length)}
+                        </div>
+                    )}
+                    <p className="text-sm text-gray-600">Applications rejected</p>
+                    <Button
+                        className="w-full mt-4 bg-transparent"
+                        variant="outline"
+                        onClick={() => setActiveList("rejected")}
+                        disabled={votersLoading || rejectedVotersCard.length === 0}
+                    >
+                      Review Rejected
+                    </Button>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {!votersLoading && votersError && (
+                  <div className="text-sm text-red-600">{votersError}</div>
+              )}
+
+              {/* Details list for the selected category */}
+              {activeList && !votersLoading && (
+                  <Card>
+                    <CardHeader className="flex flex-row items-center justify-between">
+                      <CardTitle className="text-lg">
+                        {activeList === "pending" && "Pending Verifications"}
+                        {activeList === "verified" && "Verified Voters"}
+                        {activeList === "rejected" && "Rejected Applications"}
+                        {" "}({listToShow.length})
+                      </CardTitle>
+                      <div className="flex gap-2">
+                        <Button variant="outline" onClick={() => setActiveList(null)}>
+                          Close
+                        </Button>
+                      </div>
+                    </CardHeader>
+                    <CardContent>
+                      {listToShow.length === 0 ? (
+                          <div className="text-sm text-gray-600">No records found.</div>
+                      ) : (
+                          <div className="overflow-x-auto">
+                            <table className="min-w-full text-sm">
+                              <thead>
+                              <tr className="text-left text-gray-600 border-b">
+                                <th className="py-2 pr-4">Full Name</th>
+                                <th className="py-2 pr-4">NIC</th>
+                                <th className="py-2 pr-4 hidden md:table-cell">District</th>
+                                <th className="py-2 pr-4 hidden md:table-cell">Phone</th>
+                                <th className="py-2 pr-4">Status</th>
+                                <th className="py-2 pr-2">Images</th>
+                                {(activeList === "pending" || activeList === "rejected") && (
+                                    <th className="py-2 pr-2">Verify</th>
+                                )}
+                                {(activeList === "pending") && (
+                                    <th className="py-2 pr-2">Reject</th>
+                                )}
+                              </tr>
+                              </thead>
+                              <tbody>
+                              {listToShow.map((v: Voter, idx: number) => (
+                                  <tr key={(v.id ?? v.nicNumber) + "-" + idx} className="border-b">
+                                    <td className="py-2 pr-4">{v.fullName}</td>
+                                    <td className="py-2 pr-4">{v.nicNumber}</td>
+                                    <td className="py-2 pr-4 hidden md:table-cell">{v.district ?? "-"}</td>
+                                    <td className="py-2 pr-4 hidden md:table-cell">{v.phoneNumber ?? "-"}</td>
+                                    <td className="py-2 pr-4">
+                          <span
+                              className={
+                                  "px-2 py-1 rounded text-xs " +
+                                  (normalize(v.verified) === "VERIFIED"
+                                      ? "bg-green-100 text-green-700"
+                                      : normalize(v.verified) === "REJECTED"
+                                          ? "bg-red-100 text-red-700"
+                                          : "bg-orange-100 text-orange-700")
+                              }
+                          >
+                            {normalize(v.verified) || "-"}
+                          </span>
+                                    </td>
+                                    <td className="py-2 pr-2">
+                                      {/* Replace onClick with your modal logic or navigation */}
+                                      <Button
+                                          size="sm"
+                                          variant="outline"
+                                          onClick={() => {
+                                            // Example: if you have modal state
+                                            setSelectedVoter(v);
+                                            setModalOpen(true);
+                                          }}
+                                      >
+                                        View
+                                      </Button>
+                                    </td>
+                                    {(activeList === "pending" || activeList === "rejected") && (
+                                        <td className="py-2 pr-2">
+                                          <Button
+                                              size="sm"
+                                              variant="outline"
+                                              className="flex items-center gap-2 border-green-600 text-green-700 hover:bg-green-600 hover:text-white hover:border-green-700 transition"
+                                              onClick={() =>
+                                                  showVerifyToast({
+                                                    action: "verify",
+                                                    voter: v,
+                                                    token: Cookies.get("token"),
+                                                    onAction: handleVerify, // must return a Promise
+                                                  })
+                                              }
+                                          >
+                                            <BookCheck className="text-xl" />
+                                            Verify Voter
+                                          </Button>
+                                        </td>
+                                    )}
+                                    {(activeList === "pending") && (
+                                        <td className="py-2 pr-2">
+                                          <Button
+                                              size="sm"
+                                              variant="outline"
+                                              className="flex items-center gap-2 border-red-600 text-red-700 hover:bg-red-600 hover:text-white hover:border-red-700 transition"
+                                              onClick={() =>
+                                                  showVerifyToast({
+                                                    action: "reject",
+                                                    voter: v,
+                                                    token: Cookies.get("token"),
+                                                    onAction: handleReject, // must return a Promise
+                                                  })
+                                              }
+                                          >
+                                            <BookCheck className="text-xl" />
+                                            Reject Voter
+                                          </Button>
+                                        </td>
+                                    )}
+                                  </tr>
+                              ))}
+                              </tbody>
+                            </table>
+                          </div>
+                      )}
+                    </CardContent>
+                  </Card>
+              )}
             </div>
 
-            {/* Voter List Table */}
             <Card>
               <CardHeader>
                 <CardTitle>Recent Voter Registrations</CardTitle>
@@ -407,65 +676,180 @@ export default function AdminDashboard() {
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
-                  {[
-                    {
-                      name: "John Silva",
-                      nic: "123456789V",
-                      district: "Colombo",
-                      status: "verified",
-                      date: "2024-01-15",
-                    },
-                    {
-                      name: "Maria Fernando",
-                      nic: "987654321V",
-                      district: "Kandy",
-                      status: "pending",
-                      date: "2024-01-14",
-                    },
-                    {
-                      name: "David Perera",
-                      nic: "456789123V",
-                      district: "Galle",
-                      status: "verified",
-                      date: "2024-01-13",
-                    },
-                    {
-                      name: "Sarah Jayawardena",
-                      nic: "789123456V",
-                      district: "Jaffna",
-                      status: "rejected",
-                      date: "2024-01-12",
-                    },
-                  ].map((voter, index) => (
-                    <div key={index} className="flex justify-between items-center p-4 border rounded-lg">
-                      <div className="flex-1">
-                        <h4 className="font-medium">{voter.name}</h4>
-                        <p className="text-sm text-gray-600">
-                          {voter.nic} • {voter.district}
-                        </p>
-                        <p className="text-xs text-gray-500">{voter.date}</p>
+                  {(voters ?? []).slice(0, 5).map((voter, index) => (
+                      <div key={voter.id ?? index} className="flex justify-between items-center p-4 border rounded-lg">
+                        <div className="flex-1">
+                          <h4 className="font-medium">{voter.fullName}</h4>
+                          <p className="text-sm text-gray-600">
+                            {voter.nicNumber} • {voter.district}
+                          </p>
+                          <p className="text-xs text-gray-500">{new Date(voter.createdAt).toLocaleDateString()}</p>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <Badge
+                              variant={
+                                voter.verified === "VERIFIED"
+                                    ? "default"
+                                    : voter.verified === "PENDING"
+                                        ? "secondary"
+                                        : "destructive"
+                              }
+                          >
+                            {voter.verified === "VERIFIED" && <CheckCircle className="h-3 w-3 mr-1"/>}
+                            {voter.verified === "PENDING" && <Clock className="h-3 w-3 mr-1"/>}
+                            {voter.verified === "REJECTED" && <AlertCircle className="h-3 w-3 mr-1"/>}
+                            {voter.verified.toLowerCase()}
+                          </Badge>
+                          <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                setSelectedVoter(voter);
+                                setModalOpen(true);
+
+                              }}
+                          >
+                            <Eye className="h-4 w-4"/>
+                          </Button>
+                        </div>
                       </div>
-                      <div className="flex items-center space-x-2">
-                        <Badge
-                          variant={
-                            voter.status === "verified"
-                              ? "default"
-                              : voter.status === "pending"
-                                ? "secondary"
-                                : "destructive"
-                          }
-                        >
-                          {voter.status === "verified" && <CheckCircle className="h-3 w-3 mr-1" />}
-                          {voter.status === "pending" && <Clock className="h-3 w-3 mr-1" />}
-                          {voter.status === "rejected" && <AlertCircle className="h-3 w-3 mr-1" />}
-                          {voter.status}
-                        </Badge>
-                        <Button variant="outline" size="sm">
-                          <Eye className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </div>
                   ))}
+                  {modalOpen && selectedVoter && (
+                      <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
+                        <div
+                            className="bg-white p-8 rounded-2xl shadow-xl w-[700px] max-w-[92vw] relative"
+                            role="dialog"
+                            aria-modal="true"
+                            aria-labelledby="voter-modal-title"
+                        >
+                          <button
+                              className="absolute top-4 right-4 text-gray-400 hover:text-gray-700 text-2xl"
+                              onClick={() => setModalOpen(false)}
+                              title="Close"
+                              aria-label="Close"
+                          >
+                            ×
+                          </button>
+
+                          <h2 id="voter-modal-title" className="text-2xl font-bold mb-4 text-gray-900">
+                            {selectedVoter.fullName}
+                          </h2>
+
+                          <div className="mb-3 grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-1">
+                            <p className="text-base text-gray-700">
+                              NIC: <span className="font-semibold">{selectedVoter.nicNumber}</span>
+                            </p>
+                            <p className="text-base text-gray-700">
+                              District: <span className="font-semibold">{selectedVoter.district}</span>
+                            </p>
+                          </div>
+                          <p className="text-base mb-5 text-gray-700">
+                            Phone: <span className="font-semibold">{selectedVoter.phoneNumber}</span>
+                          </p>
+
+                          {/* Loading / error states for images */}
+                          {imagesLoading && (
+                              <div className="my-6 grid grid-cols-1 sm:grid-cols-2 gap-6 animate-pulse">
+                                <div className="h-56 w-full bg-gray-200 rounded-lg"/>
+                                <div className="h-56 w-full bg-gray-200 rounded-lg"/>
+                                <div className="h-44 w-44 bg-gray-200 rounded-full mx-auto sm:col-span-2"/>
+                              </div>
+                          )}
+                          {imagesError && !imagesLoading && (
+                              <div className="mb-4 text-sm text-red-600">Failed to load images: {imagesError}</div>
+                          )}
+
+                          {!imagesLoading && (
+                              <>
+                                {/* NIC Images */}
+                                <div className="my-6 grid grid-cols-1 sm:grid-cols-2 gap-6">
+                                  <div>
+                                    <span className="font-semibold block mb-2">NIC Front:</span>
+                                    {images.nicFrontUrl ? (
+                                        <img
+                                            src={images.nicFrontUrl}
+                                            alt="NIC Front"
+                                            className="w-full h-56 object-cover rounded-lg border cursor-zoom-in hover:opacity-90 transition"
+                                            onClick={() => setFullscreenSrc(images.nicFrontUrl!)}
+                                        />
+                                    ) : (
+                                        <img
+                                            src="/placeholder-nic-front.png"
+                                            alt="NIC Front not available"
+                                            className="w-full h-56 object-cover rounded-lg border opacity-70"
+                                        />
+                                    )}
+                                  </div>
+
+                                  <div>
+                                    <span className="font-semibold block mb-2">NIC Back:</span>
+                                    {images.nicBackUrl ? (
+                                        <img
+                                            src={images.nicBackUrl}
+                                            alt="NIC Back"
+                                            className="w-full h-56 object-cover rounded-lg border cursor-zoom-in hover:opacity-90 transition"
+                                            onClick={() => setFullscreenSrc(images.nicBackUrl!)}
+                                        />
+                                    ) : (
+                                        <img
+                                            src="/placeholder-nic-back.png"
+                                            alt="NIC Back not available"
+                                            className="w-full h-56 object-cover rounded-lg border opacity-70"
+                                        />
+                                    )}
+                                  </div>
+                                </div>
+
+                                <div className="mt-4">
+                                  <span className="font-semibold block mb-2">Selfie:</span>
+                                  {images.selfieUrl ? (
+                                      <img
+                                          src={images.selfieUrl}
+                                          alt="Selfie"
+                                          className="w-44 h-44 object-cover rounded-full border mx-auto cursor-zoom-in hover:opacity-90 transition"
+                                          onClick={() => setFullscreenSrc(images.selfieUrl!)}
+                                      />
+                                  ) : (
+                                      <img
+                                          src="/placeholder-selfie.png"
+                                          alt="Selfie not available"
+                                          className="w-44 h-44 object-cover rounded-full border mx-auto opacity-70"
+                                      />
+                                  )}
+                                </div>
+                              </>
+                          )}
+                        </div>
+                      </div>
+                  )}
+
+                  {fullscreenSrc && (
+                      <div
+                          className="fixed inset-0 z-[60] bg-black/90 flex items-center justify-center"
+                          onClick={() => setFullscreenSrc(null)}
+                          role="dialog"
+                          aria-modal="true"
+                      >
+                        <button
+                            className="absolute top-4 right-4 text-white/80 hover:text-white text-3xl"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setFullscreenSrc(null);
+                            }}
+                            aria-label="Close full image"
+                            title="Close"
+                        >
+                          ×
+                        </button>
+
+                        <img
+                            src={fullscreenSrc}
+                            alt="Full-size preview"
+                            className="max-w-[95vw] max-h-[95vh] object-contain rounded shadow-2xl"
+                            onClick={(e) => e.stopPropagation()}
+                        />
+                      </div>
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -478,7 +862,7 @@ export default function AdminDashboard() {
               <div className="flex space-x-2">
                 <Select>
                   <SelectTrigger className="w-48">
-                    <SelectValue placeholder="Select Election" />
+                    <SelectValue placeholder="Select Election"/>
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="presidential">Presidential Election 2024</SelectItem>
@@ -486,7 +870,7 @@ export default function AdminDashboard() {
                   </SelectContent>
                 </Select>
                 <Button variant="outline">
-                  <BarChart3 className="h-4 w-4 mr-2" />
+                  <BarChart3 className="h-4 w-4 mr-2"/>
                   Export Results
                 </Button>
               </div>
@@ -501,24 +885,24 @@ export default function AdminDashboard() {
                 <CardContent>
                   <div className="space-y-4">
                     {[
-                      { name: "John Silva", party: "Democratic Party", votes: 456789, percentage: 37.2 },
-                      { name: "Maria Fernando", party: "Progressive Alliance", votes: 398456, percentage: 32.4 },
-                      { name: "David Perera", party: "National Unity", votes: 234567, percentage: 19.1 },
-                      { name: "Sarah Jayawardena", party: "Future Forward", votes: 139876, percentage: 11.3 },
+                      {name: "John Silva", party: "Democratic Party", votes: 456789, percentage: 37.2},
+                      {name: "Maria Fernando", party: "Progressive Alliance", votes: 398456, percentage: 32.4},
+                      {name: "David Perera", party: "National Unity", votes: 234567, percentage: 19.1},
+                      {name: "Sarah Jayawardena", party: "Future Forward", votes: 139876, percentage: 11.3},
                     ].map((candidate, index) => (
-                      <div key={index} className="space-y-2">
-                        <div className="flex justify-between items-center">
-                          <div>
-                            <h4 className="font-medium">{candidate.name}</h4>
-                            <p className="text-sm text-gray-600">{candidate.party}</p>
+                        <div key={index} className="space-y-2">
+                          <div className="flex justify-between items-center">
+                            <div>
+                              <h4 className="font-medium">{candidate.name}</h4>
+                              <p className="text-sm text-gray-600">{candidate.party}</p>
+                            </div>
+                            <div className="text-right">
+                              <p className="font-semibold">{candidate.votes.toLocaleString()}</p>
+                              <p className="text-sm text-gray-600">{candidate.percentage}%</p>
+                            </div>
                           </div>
-                          <div className="text-right">
-                            <p className="font-semibold">{candidate.votes.toLocaleString()}</p>
-                            <p className="text-sm text-gray-600">{candidate.percentage}%</p>
-                          </div>
+                          <Progress value={candidate.percentage} className="h-2"/>
                         </div>
-                        <Progress value={candidate.percentage} className="h-2" />
-                      </div>
                     ))}
                   </div>
                 </CardContent>
@@ -532,22 +916,22 @@ export default function AdminDashboard() {
                 <CardContent>
                   <div className="space-y-3">
                     {[
-                      { district: "Colombo", totalVotes: 234567, turnout: 72.3 },
-                      { district: "Kandy", totalVotes: 156789, turnout: 68.9 },
-                      { district: "Galle", totalVotes: 123456, turnout: 75.1 },
-                      { district: "Jaffna", totalVotes: 98765, turnout: 71.2 },
-                      { district: "Anuradhapura", totalVotes: 87654, turnout: 69.8 },
+                      {district: "Colombo", totalVotes: 234567, turnout: 72.3},
+                      {district: "Kandy", totalVotes: 156789, turnout: 68.9},
+                      {district: "Galle", totalVotes: 123456, turnout: 75.1},
+                      {district: "Jaffna", totalVotes: 98765, turnout: 71.2},
+                      {district: "Anuradhapura", totalVotes: 87654, turnout: 69.8},
                     ].map((district, index) => (
-                      <div key={index} className="flex justify-between items-center p-3 border rounded">
-                        <div>
-                          <h4 className="font-medium">{district.district}</h4>
-                          <p className="text-sm text-gray-600">{district.totalVotes.toLocaleString()} votes</p>
+                        <div key={index} className="flex justify-between items-center p-3 border rounded">
+                          <div>
+                            <h4 className="font-medium">{district.district}</h4>
+                            <p className="text-sm text-gray-600">{district.totalVotes.toLocaleString()} votes</p>
+                          </div>
+                          <div className="text-right">
+                            <p className="font-semibold">{district.turnout}%</p>
+                            <p className="text-sm text-gray-600">Turnout</p>
+                          </div>
                         </div>
-                        <div className="text-right">
-                          <p className="font-semibold">{district.turnout}%</p>
-                          <p className="text-sm text-gray-600">Turnout</p>
-                        </div>
-                      </div>
                     ))}
                   </div>
                 </CardContent>
@@ -560,7 +944,7 @@ export default function AdminDashboard() {
             <div className="flex justify-between items-center">
               <h2 className="text-2xl font-bold">System Management</h2>
               <Button variant="outline">
-                <Settings className="h-4 w-4 mr-2" />
+                <Settings className="h-4 w-4 mr-2"/>
                 Advanced Settings
               </Button>
             </div>
@@ -575,21 +959,21 @@ export default function AdminDashboard() {
                   <div className="flex justify-between items-center">
                     <span>Database Status</span>
                     <Badge variant="outline" className="bg-green-50 text-green-700">
-                      <CheckCircle className="h-3 w-3 mr-1" />
+                      <CheckCircle className="h-3 w-3 mr-1"/>
                       Online
                     </Badge>
                   </div>
                   <div className="flex justify-between items-center">
                     <span>Backup Status</span>
                     <Badge variant="outline" className="bg-green-50 text-green-700">
-                      <CheckCircle className="h-3 w-3 mr-1" />
+                      <CheckCircle className="h-3 w-3 mr-1"/>
                       Up to date
                     </Badge>
                   </div>
                   <div className="flex justify-between items-center">
                     <span>Security Status</span>
                     <Badge variant="outline" className="bg-green-50 text-green-700">
-                      <Shield className="h-3 w-3 mr-1" />
+                      <Shield className="h-3 w-3 mr-1"/>
                       Secure
                     </Badge>
                   </div>
@@ -597,7 +981,7 @@ export default function AdminDashboard() {
                     <span>System Load</span>
                     <span className="text-sm font-medium">23%</span>
                   </div>
-                  <Progress value={23} className="h-2" />
+                  <Progress value={23} className="h-2"/>
                 </CardContent>
               </Card>
 
@@ -631,4 +1015,139 @@ export default function AdminDashboard() {
       </div>
     </div>
   )
+}
+
+type ActionOptions = {
+  action: "verify" | "reject";
+  voter: Voter;
+  token?: string;
+  onAction: (voter: Voter, token?: string) => Promise<any>;
+};
+
+function showVerifyToast({ action, voter, token, onAction }: ActionOptions) {
+  const actionLabel = action === "verify" ? "Verify" : "Reject";
+  const color = action === "reject" ? "red" : "green";
+  const message =
+      action === "verify"
+          ? `Are you sure you want to verify`
+          : `Are you sure you want to reject`;
+
+  toast(
+      (t) => (
+          <div className="flex flex-col items-center justify-center min-w-[240px]">
+        <span className="mb-2 text-center">
+          {message} <b>{voter.fullName}</b>?
+        </span>
+            <div className="flex gap-2 mt-2">
+              <button
+                  className={`px-3 py-1 bg-${color}-600 text-white rounded hover:bg-${color}-700 flex items-center gap-2`}
+                  onClick={() => {
+                    toast.dismiss(t.id);
+                    toast.promise(
+                        onAction(voter, token ?? Cookies.get("token")),
+                        {
+                          loading: `${actionLabel}ing...`,
+                          success: <b>Voter {actionLabel.toLowerCase()}ed!</b>,
+                          error: (err) =>
+                              err instanceof Error
+                                  ? err.message
+                                  : typeof err === "string"
+                                      ? err
+                                      : `Could not ${actionLabel.toLowerCase()}.`,
+                        },
+                        { position: "top-center" }
+                    );
+                  }}
+              >
+                <BookCheck className="text-xl" />
+                Yes, {actionLabel}
+              </button>
+              <button
+                  className="px-3 py-1 bg-gray-300 rounded hover:bg-gray-400"
+                  onClick={() => toast.dismiss(t.id)}
+              >
+                No
+              </button>
+            </div>
+          </div>
+      ),
+      {
+        duration: 6000,
+        position: "top-center",
+        style: { minWidth: "280px" },
+      }
+  );
+}
+
+/**
+ * Verifies the voter by calling the backend.
+ * Returns a promise for toast.promise.
+ */
+export async function handleVerify(
+    voter: Voter,
+    token?: string
+): Promise<any> {
+  if (!voter?.id) {
+    throw new Error("No voter ID found!");
+  }
+  if (!token) {
+    throw new Error("No auth token found!");
+  }
+
+  // If you have a token validation function, run it in your component.
+  // Example: if (!isValid) { ...redirect... return; }
+
+  try {
+    const res = await fetch(
+        `http://localhost:8080/api/v1/voter/verify/${voter.id}`,
+        {
+          method: "PATCH", // or "POST" depending on your API
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          credentials: "include",
+        }
+    );
+    if (!res.ok) {
+      const errorJson = await res.json().catch(() => ({}));
+      throw new Error(errorJson.message || `Failed (${res.status})`);
+    }
+    return res.json();
+  } catch (err) {
+    throw err;
+  }
+}
+
+export async function handleReject(
+    voter: Voter,
+    token?: string
+): Promise<any> {
+  if (!voter?.id) {
+    throw new Error("No voter ID found!");
+  }
+  if (!token) {
+    throw new Error("No auth token found!");
+  }
+
+  try {
+    const res = await fetch(
+        `http://localhost:8080/api/v1/voter/reject/${voter.id}`,
+        {
+          method: "PATCH", // or "POST" depending on your API
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          credentials: "include",
+        }
+    );
+    if (!res.ok) {
+      const errorJson = await res.json().catch(() => ({}));
+      throw new Error(errorJson.message || `Failed (${res.status})`);
+    }
+    return res.json();
+  } catch (err) {
+    throw err;
+  }
 }
