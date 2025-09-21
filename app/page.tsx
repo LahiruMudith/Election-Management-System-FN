@@ -105,7 +105,7 @@ export default function LandingPage() {
       alert(data.message);
 
       if (data.data.role === "USER") {
-        window.location.href = `/voter-dashboard`;
+        window.location.href = `/checkVoter`;
       }else if (data.data.role === "ADMIN") {
         window.location.href = `/admin`;
       }else if (data.data.role === "CANDIDATE") {

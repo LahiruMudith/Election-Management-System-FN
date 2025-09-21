@@ -121,22 +121,25 @@ export default function NICVerifyPage() {
 
   // 1) In startVerification, check for 201
   const startVerification = async () => {
-    if (!canProceedToVerification()) return
+    if (!canProceedToVerification()) return;
 
-    setVerificationStatus("processing")
-    setVerificationId(`VER-${Date.now().toString().slice(-8)}`)
+    setVerificationStatus("processing");
+    setVerificationId(`VER-${Date.now().toString().slice(-8)}`);
 
-    const formDataUpload = new FormData()
-    formDataUpload.append("nicNumber", formData.nicNumber)
-    formDataUpload.append("phoneNumber", formData.phoneNumber)
-    formDataUpload.append("fullName", formData.fullName)
-    formDataUpload.append("district", formData.district)
-    formDataUpload.append("username", Cookies.get("username") || "unknown")
-    if (uploadedFiles.nicFront) formDataUpload.append("nicFront", uploadedFiles.nicFront)
-    if (uploadedFiles.nicBack) formDataUpload.append("nicBack", uploadedFiles.nicBack)
-    if (uploadedFiles.selfie) formDataUpload.append("selfie", uploadedFiles.selfie)
+    const formDataUpload = new FormData();
+    formDataUpload.append("nicNumber", formData.nicNumber);
+    formDataUpload.append("phoneNumber", formData.phoneNumber);
+    formDataUpload.append("fullName", formData.fullName);
+    formDataUpload.append("district", formData.district);
+    formDataUpload.append("username", Cookies.get("username") || "unknown");
+    if (uploadedFiles.nicFront) formDataUpload.append("nicFront", uploadedFiles.nicFront);
+    if (uploadedFiles.nicBack) formDataUpload.append("nicBack", uploadedFiles.nicBack);
+    if (uploadedFiles.selfie) formDataUpload.append("selfie", uploadedFiles.selfie);
 
-    const token = Cookies.get("token")
+    const token = Cookies.get("token");
+
+    // Show a pending toast and get its id
+    const toastId = toast.loading("Uploading and verifying NIC...");
 
     try {
       const response = await fetch("http://localhost:8080/api/v1/voter/verifyNic", {
@@ -145,26 +148,23 @@ export default function NICVerifyPage() {
           Authorization: `Bearer ${token}`,
         },
         body: formDataUpload,
-      })
+      });
 
-      // Show success only when backend returns 201 Created
       if (response.status === 201) {
-        setVerificationStatus("success")
-        toast.success("Verification submitted successfully!")
-        // Optional: scroll to success section
-        setTimeout(() => document.getElementById("verification-result")?.scrollIntoView({ behavior: "smooth" }), 0)
+        setVerificationStatus("success");
+        toast.success("Verification submitted successfully!", { id: toastId });
+        setTimeout(() => document.getElementById("verification-result")?.scrollIntoView({ behavior: "smooth" }), 0);
       } else {
-        // Read text if available to help debug
-        const errText = await response.text().catch(() => "")
-        setVerificationStatus("failed")
-        toast.error(`NIC verification failed (${response.status}) ${errText ? "- " + errText : ""}`)
+        const errText = await response.text().catch(() => "");
+        setVerificationStatus("failed");
+        toast.error(`NIC verification failed (${response.status}) ${errText ? "- " + errText : ""}`, { id: toastId });
       }
     } catch (e) {
-      console.log(e)
-      setVerificationStatus("failed")
-      toast.error("NIC verification failed!")
+      console.log(e);
+      setVerificationStatus("failed");
+      toast.error("NIC verification failed!", { id: toastId });
     }
-  }
+  };
 
   const FileUploadCard = ({
                             title,

@@ -1,18 +1,18 @@
 import { useEffect, useState } from "react";
 
 export interface Voter {
-    id: string;
-    userId: string;
+    id: number;
     nicNumber: string;
     phoneNumber: string;
     fullName: string;
     district: string;
-    isActive: boolean;
     verified: string;
-    createdAt: string;
-    nicFrontUrl?: string;  // URL to NIC Front image
-    nicBackUrl?: string;   // URL to NIC Back image
-    selfieUrl?: string;    // URL to Selfie image
+    creatAt: string;
+    nicFrontImg: string;
+    nicBackImg: string;
+    selfieImg: string;
+    votes: any[];
+    active: boolean;
 }
 
 export function useAllVoters(token: string | null) {

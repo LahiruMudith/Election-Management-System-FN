@@ -13,21 +13,18 @@ import Cookies from "js-cookie";
 import { useVoterDetails } from "@/hooks/getVoterDetails";
 import toast from "react-hot-toast";
 import {useElectionDetails} from "@/hooks/getElectionDetails";
+import LogoutButton from "@/components/ui/logoutButton";
 
 
 export default function VoterDashboard() {
   const { isValid, loading } = useTokenValidation();
   // const nicVerified = false;
   const token = Cookies.get("token") || null;
-  const { voter, loading : voterLoading, error : voterError } = useVoterDetails(token);
+  const username = Cookies.get("username") || null;
+  const { voterProfile, loading : voterLoading, error : voterError } = useVoterDetails(token, username);
   const { elections: fetchedElections, loading : electionLoading, error : electionError } = useElectionDetails(token);
-  const nicVerified = voter?.verified === "VERIFIED" || voter?.verified === "PENDING";
-  console.log(fetchedElections)
-  // console.log(election)
+  const nicVerified = voterProfile?.verified === "VERIFIED" || voterProfile?.verified === "PENDING";
 
-  // Object.values(election).map((item) => {
-  //   console.log(item);
-  // });
 
   const [notifications] = useState([
     { id: 1, message: "Presidential Election voting is now open", type: "info", time: "2 hours ago" },
@@ -118,7 +115,7 @@ export default function VoterDashboard() {
   };
 
 // Fallback for unknown status
-  const badgeProps = nicStatusMap[voter?.verified as keyof typeof nicStatusMap] || {
+  const badgeProps = nicStatusMap[voterProfile?.verified as keyof typeof nicStatusMap] || {
     bg: "bg-gray-50",
     text: "text-gray-700",
     border: "border-gray-200",
@@ -145,7 +142,7 @@ export default function VoterDashboard() {
     return null; // prevent rendering rest of component
   }
 
-  if (!voterLoading && voter === null) {
+  if (!voterLoading && voterProfile === null) {
     toast.error("Failed to load voter details. Please log in again.");
     return null;
   }
@@ -170,10 +167,7 @@ export default function VoterDashboard() {
               {/*  <Bell className="h-5 w-5" />*/}
               {/*  <Badge className="absolute -top-1 -right-1 h-5 w-5 rounded-full p-0 text-xs">3</Badge>*/}
               {/*</Button>*/}
-              <Avatar>
-                <AvatarImage src="/placeholder.svg?height=32&width=32" />
-                <AvatarFallback>JD</AvatarFallback>
-              </Avatar>
+              <LogoutButton />
             </div>
           </div>
         </div>
@@ -189,8 +183,8 @@ export default function VoterDashboard() {
                   <AvatarImage src="/placeholder.svg?height=80&width=80" />
                   <AvatarFallback className="text-2xl">JD</AvatarFallback>
                 </Avatar>
-                <CardTitle>{voter?.fullName}</CardTitle>
-                <CardDescription>Voter ID: {voter?.nicNumber}</CardDescription>
+                <CardTitle>{voterProfile?.fullName}</CardTitle>
+                <CardDescription>Voter ID: {voterProfile?.nicNumber}</CardDescription>
                 <Badge variant="outline" className={` w-24 justify-center ${badgeProps.bg} ${badgeProps.text} ${badgeProps.border}` }>
                   {badgeProps.icon}
                   {badgeProps.label}
@@ -200,7 +194,7 @@ export default function VoterDashboard() {
                 <div className="space-y-2">
                   <div className="flex justify-between text-sm">
                     <span>District:</span>
-                    <span className="font-medium">{voter?.district}</span>
+                    <span className="font-medium">{voterProfile?.district}</span>
                   </div>
                   {/*<div className="flex justify-between text-sm">*/}
                   {/*  <span>Registration Date:</span>*/}
@@ -208,7 +202,7 @@ export default function VoterDashboard() {
                   {/*</div>*/}
                   <div className="flex justify-between text-sm">
                     <span>Phone Number:</span>
-                    <span className="font-medium">{voter?.phoneNumber}</span>
+                    <span className="font-medium">{voterProfile?.phoneNumber}</span>
                   </div>
                 </div>
                 <div className="pt-4 border-t">
@@ -238,7 +232,7 @@ export default function VoterDashboard() {
             <div className="space-y-8">
               {/* Welcome Section */}
               <div>
-                <h1 className="text-3xl font-bold text-gray-900 mb-2">Welcome back, {voter?.fullName?.split(" ")[0]}!</h1>
+                <h1 className="text-3xl font-bold text-gray-900 mb-2">Welcome back, {voterProfile?.fullName?.split(" ")[0]}!</h1>
                 <p className="text-gray-600">Stay updated with active elections and cast your vote securely.</p>
               </div>
 

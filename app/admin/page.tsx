@@ -23,7 +23,7 @@ import {
   Shield,
   Database,
   Activity,
-  BookCheck,
+  BookCheck, Flag,
 } from "lucide-react"
 import Link from "next/link"
 import { useTokenValidation } from "@/hooks/useTokenValidation";
@@ -34,6 +34,10 @@ import { useVoterImages } from "@/hooks/getVoterPics";
 import { exportVotersToPDF } from "../utils/exportVotersToPDF";
 import jsPDF from "jspdf";
 import "jspdf-autotable";
+import {useGetAllCandidates} from "@/hooks/useGetAllCandidates";
+import {Candidate} from "@/types/candidate";
+import {getCandidateImages} from "@/hooks/getCandidatePics";
+import LogoutButton from "@/components/ui/logoutButton";
 
 
 
@@ -42,15 +46,83 @@ type ActiveList = "pending" | "verified" | "rejected" | null;
 const fmt = new Intl.NumberFormat("en-US");
 
 export default function AdminDashboard() {
+  const token = Cookies.get("token") ?? null;
+
+
   const { isValid } = useTokenValidation();
   const [activeTab, setActiveTab] = useState("overview")
   const { voters, loading: votersLoading, error: votersError } = getAllVoters(Cookies.get("token") ?? null);
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedVoter, setSelectedVoter] = useState<Voter | null>(null);
   const [fullscreenSrc, setFullscreenSrc] = useState<string | null>(null);
-  const { images, loading: imagesLoading, error: imagesError, reload: reloadImages } = useVoterImages(selectedVoter?.nicNumber ?? null, Cookies.get("token") ?? null);
+  // const { images, loading: imagesLoading, error: imagesError, reload: reloadImages } = useVoterImages(selectedVoter?.nicFrontUrl, selectedVoter?.nicBackUrl, selectedVoter?.selfieUrl, Cookies.get("token") ?? null);
+  const { candidates, candidatesLoading, candidatesError, refetchCandidates } = useGetAllCandidates(token);
+  let selectedCandidateUsername = null
+  const { images:candidateImages, loading: candidateImagesLoading, error: candidateImagesError } = getCandidateImages(selectedCandidateUsername, token);
 
-  const token = Cookies.get("token") ?? null;
+
+  const [candidateActiveList, setCandidateActiveList] =
+      useState<"pending" | "approved" | "rejected" | null>(null);
+  const [selectedCandidate, setSelectedCandidate] = useState<Candidate | null>(null);
+  const [candidateModalOpen, setCandidateModalOpen] = useState(false);
+  const [candidateFullscreenSrc, setCandidateFullscreenSrc] = useState<string | null>(null);
+
+  const pendingCandidates = useMemo(
+      () => candidates.filter(c => c.status === "PENDING"),
+      [candidates]
+  );
+  const approvedCandidates = useMemo(
+      () => candidates.filter(c => c.status === "APPROVED"),
+      [candidates]
+  );
+  const rejectedCandidates = useMemo(
+      () => candidates.filter(c => c.status === "REJECTED"),
+      [candidates]
+  );
+
+  const candidateListToShow = useMemo(() => {
+    switch (candidateActiveList) {
+      case "pending": return pendingCandidates;
+      case "approved": return approvedCandidates;
+      case "rejected": return rejectedCandidates;
+      default: return [];
+    }
+  }, [candidateActiveList, pendingCandidates, approvedCandidates, rejectedCandidates]);
+
+  function normalizeStatus(status?: string) {
+    return (status || "").toUpperCase();
+  }
+  const CANDIDATE_IMG_BASE = "http://localhost:8080/api/v1/candidate/images";
+
+  function getUsernameFromCandidateImage(fileName: string): string | null {
+    // Keep only the base name (remove folders, query, hash)
+    const base = fileName.replace(/^.*[\\/]/, "").split("?")[0].split("#")[0];
+
+    // Strip the last extension
+    const dot = base.lastIndexOf(".");
+    const name = dot !== -1 ? base.slice(0, dot) : base;
+
+    // Known suffixes
+    const suffixes = ["_idFront", "_idBack", "_selfie"];
+
+    // Remove the matching suffix if present (case-insensitive)
+    const lower = name.toLowerCase();
+    for (const s of suffixes) {
+      if (lower.endsWith(s.toLowerCase())) {
+        return name.slice(0, -s.length);
+      }
+    }
+    return null; // not a recognized pattern
+  }
+
+  function buildCandidateImgSrc(value?: string | null) {
+    if (!value) return undefined;
+    // If it's an absolute URL or data URI, use as-is; otherwise treat as a filename from the backend.
+    if (/^https?:\/\//i.test(value) || value.startsWith("data:")) return value;
+    return `${CANDIDATE_IMG_BASE}/${encodeURIComponent(value)}`;
+  }
+
+
 
   // Normalize status for safer filtering
   const normalize = (s?: string) => (s ? s.trim().toUpperCase() : "");
@@ -102,11 +174,11 @@ export default function AdminDashboard() {
   }, [modalOpen, fullscreenSrc]);
 
   // optional: refresh images when the modal opens
-  useEffect(() => {
-    if (modalOpen && selectedVoter?.nicNumber) {
-      void reloadImages();
-    }
-  }, [modalOpen, selectedVoter?.nicNumber, reloadImages]);
+  // useEffect(() => {
+  //   if (modalOpen && selectedVoter?.nicNumber) {
+  //     void reloadImages();
+  //   }
+  // }, [modalOpen, selectedVoter?.nicNumber, reloadImages]);
 
   const stats = {
     totalVoters: voters.length,
@@ -236,10 +308,7 @@ export default function AdminDashboard() {
                 <Shield className="h-3 w-3 mr-1" />
                 Secure Session
               </Badge>
-              <Button variant="outline" size="sm">
-                <Settings className="h-4 w-4 mr-2" />
-                System Settings
-              </Button>
+              <LogoutButton/>
             </div>
           </div>
         </div>
@@ -255,9 +324,10 @@ export default function AdminDashboard() {
           <TabsList className="grid w-full grid-cols-5">
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="elections">Elections</TabsTrigger>
+            <TabsTrigger value="candidates">Candidates</TabsTrigger>
             <TabsTrigger value="voters">Voters</TabsTrigger>
             <TabsTrigger value="results">Results</TabsTrigger>
-            <TabsTrigger value="system">System</TabsTrigger>
+            {/*<TabsTrigger value="system">System</TabsTrigger>*/}
           </TabsList>
 
           {/* Overview Tab */}
@@ -352,10 +422,18 @@ export default function AdminDashboard() {
                   <CardDescription>Common administrative tasks</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <Button className="w-full justify-start">
-                    <Plus className="h-4 w-4 mr-2" />
-                    Create New Election
-                  </Button>
+                  <Link href="/create-election">
+                    <Button className="w-full justify-start">
+                      <Plus className="h-4 w-4 mr-2" />
+                      Create New Election
+                    </Button>
+                  </Link>
+                  <Link href="/parties">
+                    <Button variant="outline" className="w-full justify-start bg-transparent">
+                      <Flag className="h-4 w-4 mr-2" />
+                      Manage Political Parties
+                    </Button>
+                  </Link>
                   <Button variant="outline" className="w-full justify-start bg-transparent">
                     <Users className="h-4 w-4 mr-2" />
                     Manage Voter Registrations
@@ -454,15 +532,511 @@ export default function AdminDashboard() {
             </div>
           </TabsContent>
 
+          {/* Candidates Tab */}
+          <TabsContent value="candidates" className="space-y-6">
+            {/* Top Bar */}
+            <div className="flex justify-between items-center">
+              <h2 className="text-2xl font-bold">Candidate Management</h2>
+              <div className="flex space-x-2">
+                {/* Example export button (uncomment if you added util) */}
+                {/* <Button
+        variant="outline"
+        onClick={() => exportCandidatesToPDF(candidates)}
+        disabled={candidatesLoading || candidates.length === 0}
+      >
+        Export All Candidates
+      </Button> */}
+              </div>
+            </div>
+
+            {/*
+    State setup (place these useState/useMemo calls in your component body ABOVE return):
+    const { candidates, candidatesLoading, candidatesError } = useGetAllCandidates();
+    const [candidateActiveList, setCandidateActiveList] = useState<"pending"|"approved"|"rejected"|null>(null);
+    const [selectedCandidate, setSelectedCandidate] = useState<Candidate|null>(null);
+    const [candidateModalOpen, setCandidateModalOpen] = useState(false);
+    const [candidateFullscreenSrc, setCandidateFullscreenSrc] = useState<string|null>(null);
+
+    const pendingCandidates = useMemo(() => candidates.filter(c => c.status === "PENDING"), [candidates]);
+    const approvedCandidates = useMemo(() => candidates.filter(c => c.status === "APPROVED"), [candidates]);
+    const rejectedCandidates = useMemo(() => candidates.filter(c => c.status === "REJECTED"), [candidates]);
+
+    const candidateListToShow = useMemo(() => {
+      if (!candidateActiveList) return [];
+      switch (candidateActiveList) {
+        case "pending": return pendingCandidates;
+        case "approved": return approvedCandidates;
+        case "rejected": return rejectedCandidates;
+        default: return [];
+      }
+    }, [candidateActiveList, pendingCandidates, approvedCandidates, rejectedCandidates]);
+
+    function normalizeStatus(s?: string) {
+      if (!s) return "";
+      return s.toUpperCase();
+    }
+
+    // Example approve/reject handlers (replace with real API calls):
+    async function handleApprove(candidate: Candidate) { ... }
+    async function handleReject(candidate: Candidate) { ... }
+  */}
+
+            {/* Summary Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg">Pending Approvals</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {candidatesLoading ? (
+                      <div className="h-8 w-28 bg-gray-200 rounded animate-pulse mb-2" />
+                  ) : (
+                      <div className="text-3xl font-bold text-orange-600 mb-2">
+                        {pendingCandidates.length.toLocaleString()}
+                      </div>
+                  )}
+                  <p className="text-sm text-gray-600">Awaiting review</p>
+                  <Button
+                      className="w-full mt-4 bg-transparent"
+                      variant="outline"
+                      onClick={() => setCandidateActiveList("pending")}
+                      disabled={candidatesLoading || pendingCandidates.length === 0}
+                  >
+                    Review Pending
+                  </Button>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg">Approved Candidates</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {candidatesLoading ? (
+                      <div className="h-8 w-36 bg-gray-200 rounded animate-pulse mb-2" />
+                  ) : (
+                      <div className="text-3xl font-bold text-green-600 mb-2">
+                        {approvedCandidates.length.toLocaleString()}
+                      </div>
+                  )}
+                  <p className="text-sm text-gray-600">Approved for ballot</p>
+                  <Button
+                      className="w-full mt-4 bg-transparent"
+                      variant="outline"
+                      onClick={() => setCandidateActiveList("approved")}
+                      disabled={candidatesLoading || approvedCandidates.length === 0}
+                  >
+                    View All
+                  </Button>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg">Rejected Applications</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {candidatesLoading ? (
+                      <div className="h-8 w-28 bg-gray-200 rounded animate-pulse mb-2" />
+                  ) : (
+                      <div className="text-3xl font-bold text-red-600 mb-2">
+                        {rejectedCandidates.length.toLocaleString()}
+                      </div>
+                  )}
+                  <p className="text-sm text-gray-600">Applications rejected</p>
+                  <Button
+                      className="w-full mt-4 bg-transparent"
+                      variant="outline"
+                      onClick={() => setCandidateActiveList("rejected")}
+                      disabled={candidatesLoading || rejectedCandidates.length === 0}
+                  >
+                    Review Rejected
+                  </Button>
+                </CardContent>
+              </Card>
+            </div>
+
+            {!candidatesLoading && candidatesError && (
+                <div className="text-sm text-red-600">{candidatesError}</div>
+            )}
+
+            {/* Filtered List */}
+            {candidateActiveList && !candidatesLoading && (
+                <Card>
+                  <CardHeader className="flex flex-row items-center justify-between">
+                    <CardTitle className="text-lg">
+                      {candidateActiveList === "pending" && "Pending Approvals"}
+                      {candidateActiveList === "approved" && "Approved Candidates"}
+                      {candidateActiveList === "rejected" && "Rejected Applications"}
+                      {" "}({candidateListToShow.length})
+                    </CardTitle>
+                    <div className="flex gap-2">
+                      <Button variant="outline" onClick={() => setCandidateActiveList(null)}>
+                        Close
+                      </Button>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    {candidateListToShow.length === 0 ? (
+                        <div className="text-sm text-gray-600">No records found.</div>
+                    ) : (
+                        <div className="overflow-x-auto">
+                          <table className="min-w-full text-sm">
+                            <thead>
+                            <tr className="text-left text-gray-600 border-b">
+                              <th className="py-2 pr-4">Full Name</th>
+                              <th className="py-2 pr-4">Age</th>
+                              <th className="py-2 pr-4 hidden md:table-cell">Manifesto</th>
+                              <th className="py-2 pr-4 hidden md:table-cell">Profession</th>
+                              <th className="py-2 pr-4">Party</th>
+                              <th className="py-2 pr-4">Status</th>
+                              <th className="py-2 pr-2">Details</th>
+                              {(candidateActiveList === "pending" || candidateActiveList === "rejected") && (
+                                  <th className="py-2 pr-2">Approve</th>
+                              )}
+                              {candidateActiveList === "pending" && (
+                                  <th className="py-2 pr-2">Reject</th>
+                              )}
+                            </tr>
+                            </thead>
+                            <tbody>
+                            {candidateListToShow.map((c, idx) => (
+                                <tr key={(c.id ?? c.fullName) + "-" + idx} className="border-b">
+                                  <td className="py-2 pr-4">{c.fullName}</td>
+                                  <td className="py-2 pr-4">{c.age}</td>
+                                  <td className="py-2 pr-4 hidden md:table-cell">
+                                    {c.manifesto
+                                        ? c.manifesto.length > 60
+                                            ? c.manifesto.slice(0, 60) + "..."
+                                            : c.manifesto
+                                        : "-"}
+                                  </td>
+                                  <td className="py-2 pr-4 hidden md:table-cell">
+                                    {c.profession || "-"}
+                                  </td>
+                                  <td className="py-2 pr-4">
+                                    {c.partyName || (c.partyId ? `#${c.partyId}` : "Independent")}
+                                  </td>
+                                  <td className="py-2 pr-4">
+        <span
+            className={
+                "px-2 py-1 rounded text-xs " +
+                (normalizeStatus(c.status) === "APPROVED"
+                    ? "bg-green-100 text-green-700"
+                    : normalizeStatus(c.status) === "REJECTED"
+                        ? "bg-red-100 text-red-700"
+                        : "bg-orange-100 text-orange-700")
+            }
+        >
+          {normalizeStatus(c.status) || "-"}
+        </span>
+                                  </td>
+                                  <td className="py-2 pr-2">
+                                    <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={() => {
+                                          setSelectedCandidate(c);
+                                          selectedCandidateUsername = getUsernameFromCandidateImage(c.nicFrontImg)
+                                          setCandidateModalOpen(true);
+                                        }}
+                                    >
+                                      View
+                                    </Button>
+                                  </td>
+                                  {(candidateActiveList === "pending" || candidateActiveList === "rejected") && (
+                                      <td className="py-2 pr-2">
+                                        <Button
+                                            size="sm"
+                                            variant="outline"
+                                            className="flex items-center gap-2 border-green-600 text-green-700 hover:bg-green-600 hover:text-white hover:border-green-700 transition"
+                                            onClick={() => {
+                                              // handleApprove(c)
+                                            }}
+                                        >
+                                          Approve
+                                        </Button>
+                                      </td>
+                                  )}
+                                  {candidateActiveList === "pending" && (
+                                      <td className="py-2 pr-2">
+                                        <Button
+                                            size="sm"
+                                            variant="outline"
+                                            className="flex items-center gap-2 border-red-600 text-red-700 hover:bg-red-600 hover:text-white hover:border-red-700 transition"
+                                            onClick={() => {
+                                              // handleReject(c)
+                                            }}
+                                        >
+                                          Reject
+                                        </Button>
+                                      </td>
+                                  )}
+                                </tr>
+                            ))}
+                            </tbody>
+                          </table>
+                        </div>
+                    )}
+                    {/* Candidate Detail Modal */}
+                    {candidateModalOpen && selectedCandidate && (
+                        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
+                          <div
+                              className="bg-white p-8 rounded-2xl shadow-xl w-[900px] max-w-[95vw] relative"
+                              role="dialog"
+                              aria-modal="true"
+                              aria-labelledby="candidate-modal-title"
+                          >
+                            <button
+                                className="absolute top-4 right-4 text-gray-400 hover:text-gray-700 text-2xl"
+                                onClick={() => setCandidateModalOpen(false)}
+                                title="Close"
+                                aria-label="Close"
+                            >
+                              ×
+                            </button>
+
+                            <h2 id="candidate-modal-title" className="text-2xl font-bold mb-6 text-gray-900">
+                              Candidate Details
+                            </h2>
+
+                            {/* Top details: Full Name, Age, Profession, Approved, Active */}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+                              <div>
+                                <p className="text-xs uppercase tracking-wide text-gray-500 font-medium">Full Name</p>
+                                <p className="mt-0.5 text-sm text-gray-900">{selectedCandidate.fullName}</p>
+                              </div>
+                              <div>
+                                <p className="text-xs uppercase tracking-wide text-gray-500 font-medium">Age</p>
+                                <p className="mt-0.5 text-sm text-gray-900">{selectedCandidate.age}</p>
+                              </div>
+                              <div>
+                                <p className="text-xs uppercase tracking-wide text-gray-500 font-medium">Profession</p>
+                                <p className="mt-0.5 text-sm text-gray-900">{selectedCandidate.profession || "-"}</p>
+                              </div>
+                              <div className="flex items-center gap-4">
+                                <div>
+                                  <p className="text-xs uppercase tracking-wide text-gray-500 font-medium">Approved</p>
+                                  <span
+                                      className={
+                                          "inline-block mt-0.5 px-2 py-1 rounded text-xs font-medium " +
+                                          (selectedCandidate.approved
+                                              ? "bg-green-100 text-green-700"
+                                              : "bg-orange-100 text-orange-700")
+                                      }
+                                  >
+              {selectedCandidate.approved ? "Yes" : "No"}
+            </span>
+                                </div>
+                                <div>
+                                  <p className="text-xs uppercase tracking-wide text-gray-500 font-medium">Active</p>
+                                  <span
+                                      className={
+                                          "inline-block mt-0.5 px-2 py-1 rounded text-xs font-medium " +
+                                          (selectedCandidate.active
+                                              ? "bg-green-100 text-green-700"
+                                              : "bg-red-100 text-red-700")
+                                      }
+                                  >
+              {selectedCandidate.active ? "Active" : "Inactive"}
+            </span>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Manifesto */}
+                            <div className="mb-8">
+                              <p className="text-xs uppercase tracking-wide text-gray-500 font-medium mb-1">
+                                Manifesto
+                              </p>
+                              {selectedCandidate.manifesto ? (
+                                  <div className="text-sm text-gray-800 whitespace-pre-line max-h-44 overflow-auto rounded border p-3 bg-gray-50">
+                                    {selectedCandidate.manifesto}
+                                  </div>
+                              ) : (
+                                  <p className="text-sm text-gray-400">No manifesto provided.</p>
+                              )}
+                            </div>
+
+                            {/* Images: NIC Front, NIC Back, Selfie, Symbol */}
+                            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                              {/* NIC Front */}
+                              <div>
+                                <h3 className="text-sm font-semibold mb-2 text-gray-700">NIC Front</h3>
+                                {buildCandidateImgSrc(candidateImages.nicFrontUrl) ? (
+                                    <img
+                                        src={buildCandidateImgSrc(candidateImages.nicFrontUrl)}
+                                        alt="NIC Front"
+                                        className="w-full h-44 object-cover rounded border cursor-zoom-in hover:opacity-90 transition"
+                                        onClick={() =>
+                                            setCandidateFullscreenSrc(buildCandidateImgSrc(selectedCandidate.nicFrontImg)!)
+                                        }
+                                    />
+                                ) : (
+                                    <div className="w-full h-44 flex items-center justify-center rounded border text-gray-400 text-xs">
+                                      Not available
+                                    </div>
+                                )}
+                              </div>
+
+                              {/* NIC Back */}
+                              <div>
+                                <h3 className="text-sm font-semibold mb-2 text-gray-700">NIC Back</h3>
+                                {buildCandidateImgSrc(candidateImages.nicBackUrl) ? (
+                                    <img
+                                        src={buildCandidateImgSrc(candidateImages.nicBackUrl)}
+                                        alt="NIC Back"
+                                        className="w-full h-44 object-cover rounded border cursor-zoom-in hover:opacity-90 transition"
+                                        onClick={() =>
+                                            setCandidateFullscreenSrc(buildCandidateImgSrc(selectedCandidate.nicBackImg)!)
+                                        }
+                                    />
+                                ) : (
+                                    <div className="w-full h-44 flex items-center justify-center rounded border text-gray-400 text-xs">
+                                      Not available
+                                    </div>
+                                )}
+                              </div>
+
+                              {/* Selfie */}
+                              <div>
+                                <h3 className="text-sm font-semibold mb-2 text-gray-700">Selfie</h3>
+                                {buildCandidateImgSrc(candidateImages.nicBackUrl) ? (
+                                    <img
+                                        src={buildCandidateImgSrc(candidateImages.nicBackUrl)}
+                                        alt="Selfie"
+                                        className="w-44 h-44 object-cover rounded-full border mx-auto cursor-zoom-in hover:opacity-90 transition"
+                                        onClick={() =>
+                                            setCandidateFullscreenSrc(buildCandidateImgSrc(selectedCandidate.selfieImg)!)
+                                        }
+                                    />
+                                ) : (
+                                    <div className="w-44 h-44 flex items-center justify-center rounded-full border mx-auto text-gray-400 text-xs">
+                                      Not available
+                                    </div>
+                                )}
+                              </div>
+
+                              {/* Symbol */}
+                              <div>
+                                <h3 className="text-sm font-semibold mb-2 text-gray-700">Symbol</h3>
+                                {buildCandidateImgSrc(selectedCandidate.symbolUrl as any) ? (
+                                    <img
+                                        src={buildCandidateImgSrc(selectedCandidate.symbolUrl as any)}
+                                        alt="Symbol"
+                                        className="w-44 h-44 object-contain rounded border mx-auto cursor-zoom-in hover:opacity-90 transition"
+                                        onClick={() =>
+                                            setCandidateFullscreenSrc(buildCandidateImgSrc(selectedCandidate.symbolUrl as any)!)
+                                        }
+                                    />
+                                ) : (
+                                    <div className="w-44 h-44 flex items-center justify-center rounded border mx-auto text-gray-400 text-xs">
+                                      No Symbol
+                                    </div>
+                                )}
+                              </div>
+                            </div>
+
+                            <div className="mt-8 flex justify-end">
+                              <Button variant="outline" onClick={() => setCandidateModalOpen(false)}>
+                                Close
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+                    )}
+
+                    {/* Fullscreen overlay (reuses your existing block) */}
+                    {candidateFullscreenSrc && (
+                        <div
+                            className="fixed inset-0 z-[60] bg-black/90 flex items-center justify-center"
+                            onClick={() => setCandidateFullscreenSrc(null)}
+                            role="dialog"
+                            aria-modal="true"
+                        >
+                          <button
+                              className="absolute top-4 right-4 text-white/80 hover:text-white text-3xl"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setCandidateFullscreenSrc(null);
+                              }}
+                              aria-label="Close full image"
+                              title="Close"
+                          >
+                            ×
+                          </button>
+
+                          <img
+                              src={candidateFullscreenSrc}
+                              alt="Full-size preview"
+                              className="max-w-[95vw] max-h-[95vh] object-contain rounded shadow-2xl"
+                              onClick={(e) => e.stopPropagation()}
+                          />
+                        </div>
+                    )}
+                  </CardContent>
+                </Card>
+            )}
+
+            {/* Recent Candidate Registrations */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Recent Candidate Registrations</CardTitle>
+                <CardDescription>Latest candidate application submissions</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  {(candidates ?? []).slice(0, 5).map((c, index) => (
+                      <div key={c.id ?? index} className="flex justify-between items-center p-4 border rounded-lg">
+                        <div className="flex-1">
+                          <h4 className="font-medium">{c.fullName}</h4>
+                          <p className="text-sm text-gray-600">
+                            {(c.partyId || "Independent")} • {c.district || "-"}
+                          </p>
+                          <p className="text-xs text-gray-500">
+                            {c.createdAt ? new Date(c.createdAt).toLocaleDateString() : ""}
+                          </p>
+                        </div>
+                        <div className="flex items-center space-x-2">
+              <span
+                  className={
+                      "text-xs font-medium px-2 py-1 rounded " +
+                      (c.status === "APPROVED"
+                          ? "bg-green-100 text-green-700"
+                          : c.status === "PENDING"
+                              ? "bg-orange-100 text-orange-700"
+                              : "bg-red-100 text-red-700")
+                  }
+              >
+                {c.status.toLowerCase()}
+              </span>
+                          <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                setSelectedCandidate(c);
+                                setCandidateModalOpen(true);
+                              }}
+                          >
+                            View
+                          </Button>
+                        </div>
+                      </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
           {/* Voters Tab */}
           <TabsContent value="voters" className="space-y-6">
             <div className="flex justify-between items-center">
               <h2 className="text-2xl font-bold">Voter Management</h2>
               <div className="flex space-x-2">
                 {/*<Input placeholder="Search voters..." className="w-64"/>*/}
-                <Button onClick={() => exportVotersToPDF(voters)}>
-                  Export All Voters to PDF
-                </Button>
+                {/*<Button onClick={() => exportVotersToPDF(voters)}>*/}
+                {/*  Export All Voters to PDF*/}
+                {/*</Button>*/}
               </div>
             </div>
 
@@ -612,6 +1186,9 @@ export default function AdminDashboard() {
                                           onClick={() => {
                                             // Example: if you have modal state
                                             setSelectedVoter(v);
+                                            console.log(v.nicFrontImg)
+                                            console.log(v.nicBackImg)
+                                            console.log(v.selfieImg)
                                             setModalOpen(true);
                                           }}
                                       >
@@ -683,7 +1260,7 @@ export default function AdminDashboard() {
                           <p className="text-sm text-gray-600">
                             {voter.nicNumber} • {voter.district}
                           </p>
-                          <p className="text-xs text-gray-500">{new Date(voter.createdAt).toLocaleDateString()}</p>
+                          <p className="text-xs text-gray-500">{new Date(voter.creatAt).toLocaleDateString()}</p>
                         </div>
                         <div className="flex items-center space-x-2">
                           <Badge
@@ -705,6 +1282,9 @@ export default function AdminDashboard() {
                               size="sm"
                               onClick={() => {
                                 setSelectedVoter(voter);
+                                console.log(voter.nicFrontImg)
+                                console.log(voter.nicBackImg)
+                                console.log(voter.selfieImg)
                                 setModalOpen(true);
 
                               }}
@@ -715,9 +1295,9 @@ export default function AdminDashboard() {
                       </div>
                   ))}
                   {modalOpen && selectedVoter && (
-                      <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
+                      <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-1000 h-screen">
                         <div
-                            className="bg-white p-8 rounded-2xl shadow-xl w-[700px] max-w-[92vw] relative"
+                            className="bg-white p-8 rounded-2xl shadow-xl w-[700px] max-w-[92vw] relative max-h-screen overflow-y-auto"
                             role="dialog"
                             aria-modal="true"
                             aria-labelledby="voter-modal-title"
@@ -747,78 +1327,72 @@ export default function AdminDashboard() {
                             Phone: <span className="font-semibold">{selectedVoter.phoneNumber}</span>
                           </p>
 
+
                           {/* Loading / error states for images */}
-                          {imagesLoading && (
-                              <div className="my-6 grid grid-cols-1 sm:grid-cols-2 gap-6 animate-pulse">
-                                <div className="h-56 w-full bg-gray-200 rounded-lg"/>
-                                <div className="h-56 w-full bg-gray-200 rounded-lg"/>
-                                <div className="h-44 w-44 bg-gray-200 rounded-full mx-auto sm:col-span-2"/>
-                              </div>
-                          )}
-                          {imagesError && !imagesLoading && (
-                              <div className="mb-4 text-sm text-red-600">Failed to load images: {imagesError}</div>
-                          )}
+                          {/*{selectedVoter && (*/}
+                          {/*    <div className="my-6 grid grid-cols-1 sm:grid-cols-2 gap-6 animate-pulse">*/}
+                          {/*      <div className="h-56 w-full bg-gray-200 rounded-lg"/>*/}
+                          {/*      <div className="h-56 w-full bg-gray-200 rounded-lg"/>*/}
+                          {/*      <div className="h-44 w-44 bg-gray-200 rounded-full mx-auto sm:col-span-2"/>*/}
+                          {/*    </div>*/}
+                          {/*)}*/}
 
-                          {!imagesLoading && (
-                              <>
-                                {/* NIC Images */}
-                                <div className="my-6 grid grid-cols-1 sm:grid-cols-2 gap-6">
-                                  <div>
-                                    <span className="font-semibold block mb-2">NIC Front:</span>
-                                    {images.nicFrontUrl ? (
-                                        <img
-                                            src={images.nicFrontUrl}
-                                            alt="NIC Front"
-                                            className="w-full h-56 object-cover rounded-lg border cursor-zoom-in hover:opacity-90 transition"
-                                            onClick={() => setFullscreenSrc(images.nicFrontUrl!)}
-                                        />
-                                    ) : (
-                                        <img
-                                            src="/placeholder-nic-front.png"
-                                            alt="NIC Front not available"
-                                            className="w-full h-56 object-cover rounded-lg border opacity-70"
-                                        />
-                                    )}
-                                  </div>
+                          {/* NIC Images */}
+                          <div className="my-6 grid grid-cols-1 sm:grid-cols-2 gap-6">
+                            <div>
+                              <span className="font-semibold block mb-2">NIC Front:</span>
+                              {selectedVoter.nicFrontImg ? (
+                                  <img
+                                      src={selectedVoter.nicFrontImg}
+                                      alt="NIC Front"
+                                      className="w-full h-56 object-cover rounded-lg border cursor-zoom-in hover:opacity-90 transition"
+                                      onClick={() => setFullscreenSrc(selectedVoter.nicFrontImg!)}
+                                  />
+                              ) : (
+                                  <img
+                                      src="/placeholder-nic-front.png"
+                                      alt="NIC Front not available"
+                                      className="w-full h-56 object-cover rounded-lg border opacity-70"
+                                  />
+                              )}
+                            </div>
 
-                                  <div>
-                                    <span className="font-semibold block mb-2">NIC Back:</span>
-                                    {images.nicBackUrl ? (
-                                        <img
-                                            src={images.nicBackUrl}
-                                            alt="NIC Back"
-                                            className="w-full h-56 object-cover rounded-lg border cursor-zoom-in hover:opacity-90 transition"
-                                            onClick={() => setFullscreenSrc(images.nicBackUrl!)}
-                                        />
-                                    ) : (
-                                        <img
-                                            src="/placeholder-nic-back.png"
-                                            alt="NIC Back not available"
-                                            className="w-full h-56 object-cover rounded-lg border opacity-70"
-                                        />
-                                    )}
-                                  </div>
-                                </div>
+                            <div>
+                              <span className="font-semibold block mb-2">NIC Back:</span>
+                              {selectedVoter.nicBackImg ? (
+                                  <img
+                                      src={selectedVoter.nicBackImg}
+                                      alt="NIC Back"
+                                      className="w-full h-56 object-cover rounded-lg border cursor-zoom-in hover:opacity-90 transition"
+                                      onClick={() => setFullscreenSrc(selectedVoter.nicBackImg!)}
+                                  />
+                              ) : (
+                                  <img
+                                      src="/placeholder-nic-back.png"
+                                      alt="NIC Back not available"
+                                      className="w-full h-56 object-cover rounded-lg border opacity-70"
+                                  />
+                              )}
+                            </div>
+                          </div>
 
-                                <div className="mt-4">
-                                  <span className="font-semibold block mb-2">Selfie:</span>
-                                  {images.selfieUrl ? (
-                                      <img
-                                          src={images.selfieUrl}
-                                          alt="Selfie"
-                                          className="w-44 h-44 object-cover rounded-full border mx-auto cursor-zoom-in hover:opacity-90 transition"
-                                          onClick={() => setFullscreenSrc(images.selfieUrl!)}
-                                      />
-                                  ) : (
-                                      <img
-                                          src="/placeholder-selfie.png"
-                                          alt="Selfie not available"
-                                          className="w-44 h-44 object-cover rounded-full border mx-auto opacity-70"
-                                      />
-                                  )}
-                                </div>
-                              </>
-                          )}
+                          <div className="mt-4">
+                            <span className="font-semibold block mb-2">Selfie:</span>
+                            {selectedVoter.selfieImg ? (
+                                <img
+                                    src={selectedVoter.selfieImg}
+                                    alt="Selfie"
+                                    className="w-44 h-44 object-cover rounded-full border mx-auto cursor-zoom-in hover:opacity-90 transition"
+                                    onClick={() => setFullscreenSrc(selectedVoter.selfieImg!)}
+                                />
+                            ) : (
+                                <img
+                                    src="/placeholder-selfie.png"
+                                    alt="Selfie not available"
+                                    className="w-44 h-44 object-cover rounded-full border mx-auto opacity-70"
+                                />
+                            )}
+                          </div>
                         </div>
                       </div>
                   )}
@@ -939,78 +1513,78 @@ export default function AdminDashboard() {
             </div>
           </TabsContent>
 
-          {/* System Tab */}
-          <TabsContent value="system" className="space-y-6">
-            <div className="flex justify-between items-center">
-              <h2 className="text-2xl font-bold">System Management</h2>
-              <Button variant="outline">
-                <Settings className="h-4 w-4 mr-2"/>
-                Advanced Settings
-              </Button>
-            </div>
+          {/*/!* System Tab *!/*/}
+          {/*<TabsContent value="system" className="space-y-6">*/}
+          {/*  <div className="flex justify-between items-center">*/}
+          {/*    <h2 className="text-2xl font-bold">System Management</h2>*/}
+          {/*    <Button variant="outline">*/}
+          {/*      <Settings className="h-4 w-4 mr-2"/>*/}
+          {/*      Advanced Settings*/}
+          {/*    </Button>*/}
+          {/*  </div>*/}
 
-            <div className="grid lg:grid-cols-2 gap-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle>System Status</CardTitle>
-                  <CardDescription>Current system health and performance</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="flex justify-between items-center">
-                    <span>Database Status</span>
-                    <Badge variant="outline" className="bg-green-50 text-green-700">
-                      <CheckCircle className="h-3 w-3 mr-1"/>
-                      Online
-                    </Badge>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span>Backup Status</span>
-                    <Badge variant="outline" className="bg-green-50 text-green-700">
-                      <CheckCircle className="h-3 w-3 mr-1"/>
-                      Up to date
-                    </Badge>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span>Security Status</span>
-                    <Badge variant="outline" className="bg-green-50 text-green-700">
-                      <Shield className="h-3 w-3 mr-1"/>
-                      Secure
-                    </Badge>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span>System Load</span>
-                    <span className="text-sm font-medium">23%</span>
-                  </div>
-                  <Progress value={23} className="h-2"/>
-                </CardContent>
-              </Card>
+          {/*  <div className="grid lg:grid-cols-2 gap-6">*/}
+          {/*    <Card>*/}
+          {/*      <CardHeader>*/}
+          {/*        <CardTitle>System Status</CardTitle>*/}
+          {/*        <CardDescription>Current system health and performance</CardDescription>*/}
+          {/*      </CardHeader>*/}
+          {/*      <CardContent className="space-y-4">*/}
+          {/*        <div className="flex justify-between items-center">*/}
+          {/*          <span>Database Status</span>*/}
+          {/*          <Badge variant="outline" className="bg-green-50 text-green-700">*/}
+          {/*            <CheckCircle className="h-3 w-3 mr-1"/>*/}
+          {/*            Online*/}
+          {/*          </Badge>*/}
+          {/*        </div>*/}
+          {/*        <div className="flex justify-between items-center">*/}
+          {/*          <span>Backup Status</span>*/}
+          {/*          <Badge variant="outline" className="bg-green-50 text-green-700">*/}
+          {/*            <CheckCircle className="h-3 w-3 mr-1"/>*/}
+          {/*            Up to date*/}
+          {/*          </Badge>*/}
+          {/*        </div>*/}
+          {/*        <div className="flex justify-between items-center">*/}
+          {/*          <span>Security Status</span>*/}
+          {/*          <Badge variant="outline" className="bg-green-50 text-green-700">*/}
+          {/*            <Shield className="h-3 w-3 mr-1"/>*/}
+          {/*            Secure*/}
+          {/*          </Badge>*/}
+          {/*        </div>*/}
+          {/*        <div className="flex justify-between items-center">*/}
+          {/*          <span>System Load</span>*/}
+          {/*          <span className="text-sm font-medium">23%</span>*/}
+          {/*        </div>*/}
+          {/*        <Progress value={23} className="h-2"/>*/}
+          {/*      </CardContent>*/}
+          {/*    </Card>*/}
 
-              <Card>
-                <CardHeader>
-                  <CardTitle>System Actions</CardTitle>
-                  <CardDescription>Administrative system operations</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <Button variant="outline" className="w-full justify-start bg-transparent">
-                    <Database className="h-4 w-4 mr-2" />
-                    Create System Backup
-                  </Button>
-                  <Button variant="outline" className="w-full justify-start bg-transparent">
-                    <Activity className="h-4 w-4 mr-2" />
-                    View System Logs
-                  </Button>
-                  <Button variant="outline" className="w-full justify-start bg-transparent">
-                    <Users className="h-4 w-4 mr-2" />
-                    Manage User Permissions
-                  </Button>
-                  <Button variant="outline" className="w-full justify-start bg-transparent">
-                    <Shield className="h-4 w-4 mr-2" />
-                    Security Audit
-                  </Button>
-                </CardContent>
-              </Card>
-            </div>
-          </TabsContent>
+          {/*    <Card>*/}
+          {/*      <CardHeader>*/}
+          {/*        <CardTitle>System Actions</CardTitle>*/}
+          {/*        <CardDescription>Administrative system operations</CardDescription>*/}
+          {/*      </CardHeader>*/}
+          {/*      <CardContent className="space-y-3">*/}
+          {/*        <Button variant="outline" className="w-full justify-start bg-transparent">*/}
+          {/*          <Database className="h-4 w-4 mr-2" />*/}
+          {/*          Create System Backup*/}
+          {/*        </Button>*/}
+          {/*        <Button variant="outline" className="w-full justify-start bg-transparent">*/}
+          {/*          <Activity className="h-4 w-4 mr-2" />*/}
+          {/*          View System Logs*/}
+          {/*        </Button>*/}
+          {/*        <Button variant="outline" className="w-full justify-start bg-transparent">*/}
+          {/*          <Users className="h-4 w-4 mr-2" />*/}
+          {/*          Manage User Permissions*/}
+          {/*        </Button>*/}
+          {/*        <Button variant="outline" className="w-full justify-start bg-transparent">*/}
+          {/*          <Shield className="h-4 w-4 mr-2" />*/}
+          {/*          Security Audit*/}
+          {/*        </Button>*/}
+          {/*      </CardContent>*/}
+          {/*    </Card>*/}
+          {/*  </div>*/}
+          {/*</TabsContent>*/}
         </Tabs>
       </div>
     </div>
@@ -1047,7 +1621,11 @@ function showVerifyToast({ action, voter, token, onAction }: ActionOptions) {
                         onAction(voter, token ?? Cookies.get("token")),
                         {
                           loading: `${actionLabel}ing...`,
-                          success: <b>Voter {actionLabel.toLowerCase()}ed!</b>,
+                          success: () => {
+                            // Refresh page after success
+                            setTimeout(() => window.location.reload(), 500); // short delay for user to see toast
+                            return <b>Voter {actionLabel.toLowerCase()}ed!</b>;
+                          },
                           error: (err) =>
                               err instanceof Error
                                   ? err.message
