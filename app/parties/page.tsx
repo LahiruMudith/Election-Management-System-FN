@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import {useEffect, useState} from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -25,6 +25,8 @@ import {
     Vote,
 } from "lucide-react"
 import Link from "next/link"
+import toast from "react-hot-toast";
+import Cookies from "js-cookie";
 
 interface Party {
     id: string
@@ -40,6 +42,7 @@ interface Party {
 }
 
 export default function PartiesPage() {
+    const token = Cookies.get("token");
     const [searchTerm, setSearchTerm] = useState("")
     const [showAddModal, setShowAddModal] = useState(false)
     const [showEditModal, setShowEditModal] = useState(false)
@@ -47,73 +50,114 @@ export default function PartiesPage() {
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
     const [partyToDelete, setPartyToDelete] = useState<Party | null>(null)
 
-    const [parties, setParties] = useState<Party[]>([
-        {
-            id: "1",
-            name: "Democratic Party",
-            symbol: "🌟",
-            color: "#3B82F6",
-            description: "A progressive political party focused on democratic values and social justice.",
-            foundedYear: "1995",
-            leader: "John Silva",
-            isActive: true,
-            memberCount: 125000,
-            createdAt: "2024-01-15",
-        },
-        {
-            id: "2",
-            name: "Progressive Alliance",
-            symbol: "🌱",
-            color: "#10B981",
-            description: "Environmental and social progressive political movement.",
-            foundedYear: "2001",
-            leader: "Maria Fernando",
-            isActive: true,
-            memberCount: 98000,
-            createdAt: "2024-01-10",
-        },
-        {
-            id: "3",
-            name: "National Unity",
-            symbol: "⭐",
-            color: "#F59E0B",
-            description: "Promoting national unity and reconciliation across all communities.",
-            foundedYear: "1988",
-            leader: "David Perera",
-            isActive: true,
-            memberCount: 156000,
-            createdAt: "2024-01-08",
-        },
-        {
-            id: "4",
-            name: "Future Forward",
-            symbol: "🚀",
-            color: "#8B5CF6",
-            description: "Technology-focused party for the digital age and youth empowerment.",
-            foundedYear: "2018",
-            leader: "Sarah Jayawardena",
-            isActive: true,
-            memberCount: 67000,
-            createdAt: "2024-01-05",
-        },
-        {
-            id: "5",
-            name: "Traditional Values",
-            symbol: "🏛️",
-            color: "#DC2626",
-            description: "Conservative party focused on traditional values and cultural preservation.",
-            foundedYear: "1975",
-            leader: "Ravi Wickramasinghe",
-            isActive: false,
-            memberCount: 45000,
-            createdAt: "2024-01-01",
-        },
-    ])
+    // const [parties, setParties] = useState<Party[]>([
+    //     {
+    //         id: "1",
+    //         name: "Democratic Party",
+    //         symbol: "🌟",
+    //         color: "#3B82F6",
+    //         description: "A progressive political party focused on democratic values and social justice.",
+    //         foundedYear: "1995",
+    //         leader: "John Silva",
+    //         isActive: true,
+    //         memberCount: 125000,
+    //         createdAt: "2024-01-15",
+    //     },
+    //     {
+    //         id: "2",
+    //         name: "Progressive Alliance",
+    //         symbol: "🌱",
+    //         color: "#10B981",
+    //         description: "Environmental and social progressive political movement.",
+    //         foundedYear: "2001",
+    //         leader: "Maria Fernando",
+    //         isActive: true,
+    //         memberCount: 98000,
+    //         createdAt: "2024-01-10",
+    //     },
+    //     {
+    //         id: "3",
+    //         name: "National Unity",
+    //         symbol: "⭐",
+    //         color: "#F59E0B",
+    //         description: "Promoting national unity and reconciliation across all communities.",
+    //         foundedYear: "1988",
+    //         leader: "David Perera",
+    //         isActive: true,
+    //         memberCount: 156000,
+    //         createdAt: "2024-01-08",
+    //     },
+    //     {
+    //         id: "4",
+    //         name: "Future Forward",
+    //         symbol: "🚀",
+    //         color: "#8B5CF6",
+    //         description: "Technology-focused party for the digital age and youth empowerment.",
+    //         foundedYear: "2018",
+    //         leader: "Sarah Jayawardena",
+    //         isActive: true,
+    //         memberCount: 67000,
+    //         createdAt: "2024-01-05",
+    //     },
+    //     {
+    //         id: "5",
+    //         name: "Traditional Values",
+    //         symbol: "🏛️",
+    //         color: "#DC2626",
+    //         description: "Conservative party focused on traditional values and cultural preservation.",
+    //         foundedYear: "1975",
+    //         leader: "Ravi Wickramasinghe",
+    //         isActive: false,
+    //         memberCount: 45000,
+    //         createdAt: "2024-01-01",
+    //     },
+    // ])
+
+    // Changed: Start with empty array, load from backend
+    const [parties, setParties] = useState<Party[]>([]);
+    const [loading, setLoading] = useState<boolean>(false);
+    const [error, setError] = useState<string | null>(null);
+
+    useEffect(() => {
+        const fetchParties = async () => {
+            setLoading(true);
+            setError(null);
+            try {
+                const response = await fetch("http://localhost:8080/api/v1/parties/getAll", {
+                    headers: {
+                        Authorization: `Bearer ${token}`,
+                        "Content-Type": "application/json",
+                    },
+                    credentials: "include",
+                });
+                if (!response.ok) throw new Error("Failed to fetch parties");
+                const data = await response.json();
+                // Adapt this if needed to match your backend response format
+                setParties(
+                    data.data.map((p: any) => ({
+                        id: p.id,
+                        name: p.name,
+                        symbol: p.symbol,
+                        color: p.color,
+                        description: p.description,
+                        foundedYear: p.founderYear,
+                        leader: p.leaderName,
+                        isActive: p.active,
+                    }))
+                );
+            } catch (err: any) {
+                setError(err.message || "Unknown error");
+            } finally {
+                setLoading(false);
+            }
+        };
+        fetchParties();
+    }, [token]);
 
     const [newParty, setNewParty] = useState({
         name: "",
         symbol: "",
-        color: "#3B82F6",
+        color: "",
         description: "",
         foundedYear: "",
         leader: "",
@@ -122,7 +166,7 @@ export default function PartiesPage() {
     const [editParty, setEditParty] = useState({
         name: "",
         symbol: "",
-        color: "#3B82F6",
+        color: "",
         description: "",
         foundedYear: "",
         leader: "",
@@ -130,43 +174,96 @@ export default function PartiesPage() {
 
     const filteredParties = parties.filter(
         (party) =>
-            party.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            party.leader?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            party.description?.toLowerCase().includes(searchTerm.toLowerCase()),
-    )
+            (party.name?.toLowerCase() || "").includes(searchTerm.toLowerCase()) ||
+            (party.leader?.toLowerCase() || "").includes(searchTerm.toLowerCase()) ||
+            (party.description?.toLowerCase() || "").includes(searchTerm.toLowerCase())
+    );
 
-    const handleAddParty = () => {
+    // Modified: Remove isActive from the form, only use backend value to update state
+    const handleAddParty = async () => {
         if (newParty.name && newParty.symbol) {
-            const party: Party = {
-                id: Date.now().toString(),
+            // Prepare payload for backend
+            const partyPayload = {
                 name: newParty.name,
                 symbol: newParty.symbol,
                 color: newParty.color,
                 description: newParty.description,
-                foundedYear: newParty.foundedYear,
-                leader: newParty.leader,
-                isActive: true,
-                memberCount: 0,
-                createdAt: new Date().toISOString().split("T")[0],
+                founderYear: newParty.foundedYear, // match backend field
+                leaderName: newParty.leader,       // match backend field
+            };
+
+            try {
+                const response = await fetch("http://localhost:8080/api/v1/parties/save", {
+                    method: "POST",
+                    headers: {
+                        Authorization: `Bearer ${token}`,
+                        "Content-Type": "application/json",
+                    },
+                    credentials: "include",
+                    body: JSON.stringify(partyPayload),
+                });
+
+                if (response.ok) {
+                    const createdParty = await response.json();
+                    setParties([...parties, {
+                        id: createdParty.id,
+                        name: createdParty.name,
+                        symbol: createdParty.symbol,
+                        color: createdParty.color,
+                        description: createdParty.description,
+                        foundedYear: createdParty.founderYear,
+                        leader: createdParty.leaderName,
+                        isActive: createdParty.isActive, // Always use backend value!
+                        memberCount: createdParty.memberCount ?? 0,
+                        createdAt: createdParty.createdAt,
+                    }]);
+                    setNewParty({
+                        name: "",
+                        symbol: "",
+                        color: "",
+                        description: "",
+                        foundedYear: "",
+                        leader: "",
+                    });
+                    setShowAddModal(false);
+                    toast.success("Party added successfully!");
+                } else {
+                    toast.error("Failed to save party.");
+                }
+            } catch (err) {
+                toast.error("Network error: Could not save party.");
             }
-
-            setParties([...parties, party])
-            setNewParty({
-                name: "",
-                symbol: "",
-                color: "#3B82F6",
-                description: "",
-                foundedYear: "",
-                leader: "",
-            })
-            setShowAddModal(false)
         }
-    }
+    };
 
-    const handleEditParty = () => {
-        if (selectedParty && editParty.name && editParty.symbol) {
-            setParties(
-                parties.map((party) =>
+    // Edit status can be toggled locally (unless you want to sync with backend)
+    const handleEditParty = async () => {
+        if (!selectedParty) return;
+
+        const payload = {
+            id: selectedParty.id,
+            name: editParty.name,
+            symbol: editParty.symbol,
+            color: editParty.color,
+            description: editParty.description,
+            leaderName: editParty.leader,
+        };
+
+        try {
+            const response = await fetch(`http://localhost:8080/api/v1/parties/update`, {
+                method: "PUT",
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                    "Content-Type": "application/json",
+                },
+                credentials: "include",
+                body: JSON.stringify(payload),
+            });
+
+            if (response.ok) {
+                const result = await response.json();
+                // Update local parties list with the edited party
+                setParties(parties.map((party) =>
                     party.id === selectedParty.id
                         ? {
                             ...party,
@@ -174,28 +271,79 @@ export default function PartiesPage() {
                             symbol: editParty.symbol,
                             color: editParty.color,
                             description: editParty.description,
-                            foundedYear: editParty.foundedYear,
                             leader: editParty.leader,
                         }
-                        : party,
-                ),
-            )
-            setShowEditModal(false)
-            setSelectedParty(null)
+                        : party
+                ));
+                setShowEditModal(false);
+                setSelectedParty(null);
+                toast.success(result.message ?? "Party updated!");
+            } else {
+                toast.error("Failed to update party.");
+            }
+        } catch (error) {
+            toast.error("Network error: Could not update party.");
         }
-    }
+    };
 
-    const handleDeleteParty = () => {
-        if (partyToDelete) {
-            setParties(parties.filter((party) => party.id !== partyToDelete.id))
-            setShowDeleteConfirm(false)
-            setPartyToDelete(null)
+    const handleDeleteParty = async () => {
+        if (!partyToDelete) return;
+
+        try {
+            const response = await fetch(`http://localhost:8080/api/v1/parties/delete/${partyToDelete.id}`, {
+                method: "DELETE", // use DELETE method for deletion
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                    "Content-Type": "application/json",
+                },
+                credentials: "include",
+            });
+
+            if (response.ok) {
+                // Remove party from local state
+                setParties(parties.filter((party) => party.id !== partyToDelete.id));
+                setShowDeleteConfirm(false);
+                setPartyToDelete(null);
+
+                // Optional: Show backend message if available
+                const result = await response.json();
+                toast.success(result.message ?? "Party deleted successfully!");
+            } else {
+                toast.error("Failed to delete party.");
+            }
+        } catch (error) {
+            toast.error("Network error: Could not delete party.");
         }
-    }
+    };
 
-    const togglePartyStatus = (partyId: string) => {
-        setParties(parties.map((party) => (party.id === partyId ? { ...party, isActive: !party.isActive } : party)))
-    }
+    const togglePartyStatus = async (partyId: string) => {
+        try {
+            const response = await fetch(`http://localhost:8080/api/v1/parties/deactivate/${partyId}`, {
+                method: "PATCH",
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                    "Content-Type": "application/json",
+                },
+                credentials: "include",
+            });
+
+            if (response.ok) {
+                const result = await response.json();
+
+                // Optionally, get updated party details from backend
+                // Or just update state locally:
+                setParties(parties.map((party) =>
+                    party.id === partyId ? { ...party, isActive: !party.isActive } : party
+                ));
+
+                toast.success(result.message);
+            } else {
+                toast.error("Failed to deactivate party.");
+            }
+        } catch (error) {
+            toast.error("Network error: Could not deactivate party.");
+        }
+    };
 
     const openEditModal = (party: Party) => {
         setSelectedParty(party)
@@ -305,34 +453,34 @@ export default function PartiesPage() {
                     </div>
                 </div>
 
-                {/* Search and Filters */}
-                <Card className="mb-8">
-                    <CardHeader>
-                        <CardTitle className="flex items-center">
-                            <Search className="h-5 w-5 mr-2" />
-                            Search Parties
-                        </CardTitle>
-                        <CardDescription>Search by party name, leader, or description</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                        <div className="flex space-x-4">
-                            <div className="flex-1">
-                                <div className="relative">
-                                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-                                    <Input
-                                        placeholder="Search parties..."
-                                        value={searchTerm}
-                                        onChange={(e) => setSearchTerm(e.target.value)}
-                                        className="pl-10"
-                                    />
-                                </div>
-                            </div>
-                            <Button variant="outline" onClick={() => setSearchTerm("")} disabled={!searchTerm}>
-                                Clear
-                            </Button>
-                        </div>
-                    </CardContent>
-                </Card>
+                {/*/!* Search and Filters *!/*/}
+                {/*<Card className="mb-8">*/}
+                {/*    <CardHeader>*/}
+                {/*        <CardTitle className="flex items-center">*/}
+                {/*            <Search className="h-5 w-5 mr-2" />*/}
+                {/*            Search Parties*/}
+                {/*        </CardTitle>*/}
+                {/*        <CardDescription>Search by party name, leader, or description</CardDescription>*/}
+                {/*    </CardHeader>*/}
+                {/*    <CardContent>*/}
+                {/*        <div className="flex space-x-4">*/}
+                {/*            <div className="flex-1">*/}
+                {/*                <div className="relative">*/}
+                {/*                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />*/}
+                {/*                    <Input*/}
+                {/*                        placeholder="Search parties..."*/}
+                {/*                        value={searchTerm}*/}
+                {/*                        onChange={(e) => setSearchTerm(e.target.value)}*/}
+                {/*                        className="pl-10"*/}
+                {/*                    />*/}
+                {/*                </div>*/}
+                {/*            </div>*/}
+                {/*            <Button variant="outline" onClick={() => setSearchTerm("")} disabled={!searchTerm}>*/}
+                {/*                Clear*/}
+                {/*            </Button>*/}
+                {/*        </div>*/}
+                {/*    </CardContent>*/}
+                {/*</Card>*/}
 
                 {/* Parties Grid */}
                 <div className="grid gap-6">
@@ -522,7 +670,7 @@ export default function PartiesPage() {
                                 id="foundedYear"
                                 type="number"
                                 placeholder="1995"
-                                value={new Date().getFullYear()}
+                                value={newParty.foundedYear}
                                 onChange={(e) => setNewParty({ ...newParty, foundedYear: e.target.value })}
                             />
                         </div>
@@ -537,6 +685,8 @@ export default function PartiesPage() {
                                 rows={3}
                             />
                         </div>
+
+                        {/* Removed Active Status field since backend controls it */}
 
                         <div className="flex justify-end space-x-2">
                             <Button variant="outline" onClick={() => setShowAddModal(false)}>
@@ -633,6 +783,8 @@ export default function PartiesPage() {
                                 rows={3}
                             />
                         </div>
+
+                        {/* Removed Active Status field for edit modal as well; if you want to allow status change, add it here */}
 
                         <div className="flex justify-end space-x-2">
                             <Button variant="outline" onClick={() => setShowEditModal(false)}>

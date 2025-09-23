@@ -1,6 +1,6 @@
 "use client"
 
-import React, {useRef, useState} from "react"
+import React, {useEffect, useRef, useState} from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -13,9 +13,13 @@ import Link from "next/link"
 import toast from 'react-hot-toast';
 import Webcam from "react-webcam";
 import SelfieCapture from "./SelfieCapture";
+import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue} from "@/components/ui/select";
+import Cookies from "js-cookie";
 
 export default function RegisterCandidatePage() {
+  const token = Cookies.get("token") ?? null;
   const [showWebcam, setShowWebcam] = useState(false);
+  const [parties, setParties] = useState<Party[]>([]);
   const [currentStep, setCurrentStep] = useState(1)
   const [formData, setFormData] = useState({
     // Step 1: Account Setup
@@ -29,6 +33,8 @@ export default function RegisterCandidatePage() {
     age: "",
     profession: "",
     manifesto: "",
+    partyId: "",
+
 
     // "fullName": "Lahiru Mudith",
     // "age": 45,
@@ -83,6 +89,7 @@ export default function RegisterCandidatePage() {
     data.append("password", formData.password);
     data.append("fullName", formData.fullName);
     data.append("age", formData.age);
+    data.append("partyId", formData.partyId);
     data.append("profession", formData.profession);
     data.append("manifesto", formData.manifesto);
     data.append("idFront", formData.idFront as File);
@@ -141,6 +148,39 @@ export default function RegisterCandidatePage() {
     return uploadedFiles.idFront && uploadedFiles.idBack && uploadedFiles.selfie
   }
 
+  type Party = {
+    id: number;
+    name: string;
+    description: string;
+    symbol: string;
+    color: string;
+    leaderName: string;
+    founderYear: number;
+    candidates: any[];
+    active: boolean;
+  };
+
+  useEffect(() => {
+    async function fetchParties() {
+      try {
+        const response = await fetch("http://localhost:8080/api/log/getAllParties", {
+          headers: {
+            "Content-Type": "application/json",
+          },
+        });
+        const result = await response.json();
+        if (result.status === 200 && Array.isArray(result.data)) {
+          console.log(result.data)
+          setParties(result.data);
+        } else {
+          setParties([]);
+        }
+      } catch (error) {
+        setParties([]);
+      }
+    }
+    fetchParties();
+  }, [token]);
   if (isSubmitted) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -362,85 +402,109 @@ export default function RegisterCandidatePage() {
 
           {/* Step 2: Personal Information */}
           {currentStep === 2 && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center">
-                  <User className="h-6 w-6 mr-2" />
-                  Personal Information
-                </CardTitle>
-                <CardDescription>Provide your personal details and candidate information</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="fullName">Full Name *</Label>
-                    <Input
-                      id="fullName"
-                      placeholder="John Silva"
-                      value={formData.fullName}
-                      onChange={(e) => handleInputChange("fullName", e.target.value)}
-                    />
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center">
+                    <User className="h-6 w-6 mr-2" />
+                    Personal Information
+                  </CardTitle>
+                  <CardDescription>Provide your personal details and candidate information</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="fullName">Full Name *</Label>
+                      <Input
+                          id="fullName"
+                          placeholder="John Silva"
+                          value={formData.fullName}
+                          onChange={(e) => handleInputChange("fullName", e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="age">Age *</Label>
+                      <Input
+                          id="age"
+                          type="number"
+                          placeholder="52"
+                          value={formData.age}
+                          onChange={(e) => handleInputChange("age", e.target.value)}
+                      />
+                    </div>
                   </div>
+
                   <div className="space-y-2">
-                    <Label htmlFor="age">Age *</Label>
-                    <Input
-                      id="age"
-                      type="number"
-                      placeholder="52"
-                      value={formData.age}
-                      onChange={(e) => handleInputChange("age", e.target.value)}
-                    />
+                    <Label htmlFor="party">Political Party *</Label>
+                    <Select
+                        value={formData.partyId}
+                        onValueChange={(value) => handleInputChange("partyId", value)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select your party" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {parties.map((party) => (
+                            <SelectItem key={party.id} value={String(party.id)}>
+                              <div>
+                                <span className="font-semibold">{party.name}</span>
+                                <span className="text-xs text-gray-500 ml-2">Leader: {party.leaderName}</span>
+                                <span className="text-xs text-gray-500 ml-2">Symbol: {party.symbol}</span>
+                              </div>
+                            </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-gray-500">Select the party you represent. Leader name and Symbol shown for reference.</p>
                   </div>
-                </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="profession">Profession *</Label>
-                  <Input
-                    id="profession"
-                    placeholder="Former Finance Minister & Economist"
-                    value={formData.profession}
-                    onChange={(e) => handleInputChange("profession", e.target.value)}
-                  />
-                  <p className="text-xs text-gray-500">Your current or most recent profession</p>
-                </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="profession">Profession *</Label>
+                    <Input
+                        id="profession"
+                        placeholder="Former Finance Minister & Economist"
+                        value={formData.profession}
+                        onChange={(e) => handleInputChange("profession", e.target.value)}
+                    />
+                    <p className="text-xs text-gray-500">Your current or most recent profession</p>
+                  </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="manifesto">Election Manifesto *</Label>
-                  <Textarea
-                    id="manifesto"
-                    placeholder="Focus on economic development, job creation, and education reform. Committed to reducing poverty and improving healthcare accessibility for all Sri Lankan citizens..."
-                    value={formData.manifesto}
-                    onChange={(e) => handleInputChange("manifesto", e.target.value)}
-                    rows={6}
-                  />
-                  <p className="text-xs text-gray-500">
-                    Describe your vision, goals, and what you plan to achieve if elected
-                  </p>
-                </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="manifesto">Election Manifesto *</Label>
+                    <Textarea
+                        id="manifesto"
+                        placeholder="Focus on economic development, job creation, and education reform. Committed to reducing poverty and improving healthcare accessibility for all Sri Lankan citizens..."
+                        value={formData.manifesto}
+                        onChange={(e) => handleInputChange("manifesto", e.target.value)}
+                        rows={6}
+                    />
+                    <p className="text-xs text-gray-500">
+                      Describe your vision, goals, and what you plan to achieve if elected
+                    </p>
+                  </div>
 
-                <Alert>
-                  <Info className="h-4 w-4" />
-                  <AlertDescription>
-                    Your manifesto will be publicly visible to voters. Make sure to clearly communicate your key
-                    policies and vision for the country.
-                  </AlertDescription>
-                </Alert>
+                  <Alert>
+                    <Info className="h-4 w-4" />
+                    <AlertDescription>
+                      Your manifesto will be publicly visible to voters. Make sure to clearly communicate your key
+                      policies and vision for the country.
+                    </AlertDescription>
+                  </Alert>
 
-                <div className="flex justify-between pt-6">
-                  <Button variant="outline" onClick={() => setCurrentStep(1)}>
-                    <ArrowLeft className="h-4 w-4 mr-2" />
-                    Back
-                  </Button>
-                  <Button
-                    onClick={() => setCurrentStep(3)}
-                    disabled={!canProceedToStep3()}
-                    className="bg-blue-600 hover:bg-blue-700"
-                  >
-                    Continue to Document Upload
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
+                  <div className="flex justify-between pt-6">
+                    <Button variant="outline" onClick={() => setCurrentStep(1)}>
+                      <ArrowLeft className="h-4 w-4 mr-2" />
+                      Back
+                    </Button>
+                    <Button
+                        onClick={() => setCurrentStep(3)}
+                        disabled={!canProceedToStep3()}
+                        className="bg-blue-600 hover:bg-blue-700"
+                    >
+                      Continue to Document Upload
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
           )}
 
           {/* Step 3: Document Upload */}

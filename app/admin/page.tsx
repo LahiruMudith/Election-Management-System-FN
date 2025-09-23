@@ -127,17 +127,19 @@ export default function AdminDashboard() {
   // Normalize status for safer filtering
   const normalize = (s?: string) => (s ? s.trim().toUpperCase() : "");
 
+  const votersSafe = voters ?? [];
+
   const pendingVotersCard = useMemo(
-      () => voters.filter((v: Voter) => normalize(v.verified) === "PENDING"),
-      [voters]
+      () => votersSafe.filter((v: Voter) => normalize(v.verified) === "PENDING"),
+      [votersSafe]
   );
   const verifiedVotersCard = useMemo(
-      () => voters.filter((v: Voter) => normalize(v.verified) === "VERIFIED"),
-      [voters]
+      () => votersSafe.filter((v: Voter) => normalize(v.verified) === "VERIFIED"),
+      [votersSafe]
   );
   const rejectedVotersCard = useMemo(
-      () => voters.filter((v: Voter) => normalize(v.verified) === "REJECTED"),
-      [voters]
+      () => votersSafe.filter((v: Voter) => normalize(v.verified) === "REJECTED"),
+      [votersSafe]
   );
 
   const [activeList, setActiveList] = useState<ActiveList>(null);
@@ -181,7 +183,7 @@ export default function AdminDashboard() {
   // }, [modalOpen, selectedVoter?.nicNumber, reloadImages]);
 
   const stats = {
-    totalVoters: voters.length,
+    totalVoters: (voters ?? []).length,
     verifiedVoters: 2698432,
     activeElections: 2,
     completedElections: 15,
@@ -242,7 +244,9 @@ export default function AdminDashboard() {
   }
 
   function getCountForMonth(data: any[], year: number, month: number) {
-    return data.filter(item => {
+    // Ensure data is always an array
+    const safeData = Array.isArray(data) ? data : [];
+    return safeData.filter(item => {
       const date = new Date(item.creatAt);
       return date.getFullYear() === year && date.getMonth() === month;
     }).length;
@@ -373,48 +377,48 @@ export default function AdminDashboard() {
             </div>
 
             {/* Recent Activity */}
-            <div className="grid lg:grid-cols-2 gap-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Recent Activity</CardTitle>
-                  <CardDescription>Latest system activities and user actions</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
-                    {recentActivity.map((activity) => (
-                      <div key={activity.id} className="flex items-center space-x-3">
-                        <div
-                          className={`p-2 rounded-full ${
-                            activity.type === "user"
-                              ? "bg-blue-100"
-                              : activity.type === "election"
-                                ? "bg-green-100"
-                                : activity.type === "verification"
-                                  ? "bg-yellow-100"
-                                  : "bg-gray-100"
-                          }`}
-                        >
-                          {activity.type === "user" ? (
-                            <Users className="h-4 w-4" />
-                          ) : activity.type === "election" ? (
-                            <Vote className="h-4 w-4" />
-                          ) : activity.type === "verification" ? (
-                            <CheckCircle className="h-4 w-4" />
-                          ) : (
-                            <Database className="h-4 w-4" />
-                          )}
-                        </div>
-                        <div className="flex-1">
-                          <p className="text-sm font-medium">{activity.action}</p>
-                          <p className="text-xs text-gray-500">
-                            {activity.user} • {activity.time}
-                          </p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
+            <div className="grid lg:grid-cols-1 gap-6">
+              {/*<Card>*/}
+              {/*  <CardHeader>*/}
+              {/*    <CardTitle>Recent Activity</CardTitle>*/}
+              {/*    <CardDescription>Latest system activities and user actions</CardDescription>*/}
+              {/*  </CardHeader>*/}
+              {/*  <CardContent>*/}
+              {/*    <div className="space-y-4">*/}
+              {/*      {recentActivity.map((activity) => (*/}
+              {/*        <div key={activity.id} className="flex items-center space-x-3">*/}
+              {/*          <div*/}
+              {/*            className={`p-2 rounded-full ${*/}
+              {/*              activity.type === "user"*/}
+              {/*                ? "bg-blue-100"*/}
+              {/*                : activity.type === "election"*/}
+              {/*                  ? "bg-green-100"*/}
+              {/*                  : activity.type === "verification"*/}
+              {/*                    ? "bg-yellow-100"*/}
+              {/*                    : "bg-gray-100"*/}
+              {/*            }`}*/}
+              {/*          >*/}
+              {/*            {activity.type === "user" ? (*/}
+              {/*              <Users className="h-4 w-4" />*/}
+              {/*            ) : activity.type === "election" ? (*/}
+              {/*              <Vote className="h-4 w-4" />*/}
+              {/*            ) : activity.type === "verification" ? (*/}
+              {/*              <CheckCircle className="h-4 w-4" />*/}
+              {/*            ) : (*/}
+              {/*              <Database className="h-4 w-4" />*/}
+              {/*            )}*/}
+              {/*          </div>*/}
+              {/*          <div className="flex-1">*/}
+              {/*            <p className="text-sm font-medium">{activity.action}</p>*/}
+              {/*            <p className="text-xs text-gray-500">*/}
+              {/*              {activity.user} • {activity.time}*/}
+              {/*            </p>*/}
+              {/*          </div>*/}
+              {/*        </div>*/}
+              {/*      ))}*/}
+              {/*    </div>*/}
+              {/*  </CardContent>*/}
+              {/*</Card>*/}
 
               <Card>
                 <CardHeader>
@@ -423,7 +427,7 @@ export default function AdminDashboard() {
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <Link href="/create-election">
-                    <Button className="w-full justify-start">
+                    <Button className="w-full justify-start mb-4">
                       <Plus className="h-4 w-4 mr-2" />
                       Create New Election
                     </Button>
@@ -434,18 +438,18 @@ export default function AdminDashboard() {
                       Manage Political Parties
                     </Button>
                   </Link>
-                  <Button variant="outline" className="w-full justify-start bg-transparent">
+                  <Button variant="outline" className="w-full justify-start bg-transparent" onClick={() => {toast.error("It Under Development")}}>
                     <Users className="h-4 w-4 mr-2" />
                     Manage Voter Registrations
                   </Button>
-                  <Button variant="outline" className="w-full justify-start bg-transparent">
+                  <Button variant="outline" className="w-full justify-start bg-transparent" onClick={() => {toast.error("It Under Development")}}>
                     <BarChart3 className="h-4 w-4 mr-2" />
                     Generate Reports
                   </Button>
-                  <Button variant="outline" className="w-full justify-start bg-transparent">
-                    <Settings className="h-4 w-4 mr-2" />
-                    System Configuration
-                  </Button>
+                  {/*<Button variant="outline" className="w-full justify-start bg-transparent">*/}
+                  {/*  <Settings className="h-4 w-4 mr-2" />*/}
+                  {/*  System Configuration*/}
+                  {/*</Button>*/}
                 </CardContent>
               </Card>
             </div>
@@ -917,24 +921,6 @@ export default function AdminDashboard() {
                                 )}
                               </div>
 
-                              {/* Symbol */}
-                              <div>
-                                <h3 className="text-sm font-semibold mb-2 text-gray-700">Symbol</h3>
-                                {buildCandidateImgSrc(selectedCandidate.symbolUrl as any) ? (
-                                    <img
-                                        src={buildCandidateImgSrc(selectedCandidate.symbolUrl as any)}
-                                        alt="Symbol"
-                                        className="w-44 h-44 object-contain rounded border mx-auto cursor-zoom-in hover:opacity-90 transition"
-                                        onClick={() =>
-                                            setCandidateFullscreenSrc(buildCandidateImgSrc(selectedCandidate.symbolUrl as any)!)
-                                        }
-                                    />
-                                ) : (
-                                    <div className="w-44 h-44 flex items-center justify-center rounded border mx-auto text-gray-400 text-xs">
-                                      No Symbol
-                                    </div>
-                                )}
-                              </div>
                             </div>
 
                             <div className="mt-8 flex justify-end">
@@ -991,7 +977,7 @@ export default function AdminDashboard() {
                         <div className="flex-1">
                           <h4 className="font-medium">{c.fullName}</h4>
                           <p className="text-sm text-gray-600">
-                            {(c.partyId || "Independent")} • {c.district || "-"}
+                            {c.manifesto || "-"}
                           </p>
                           <p className="text-xs text-gray-500">
                             {c.createdAt ? new Date(c.createdAt).toLocaleDateString() : ""}

@@ -27,11 +27,35 @@ import {
     X,
 } from "lucide-react"
 import Link from "next/link"
+import { useGetAllCandidates } from "@/hooks/useGetAllCandidates"
+import Cookies from "js-cookie"
+import { Candidate } from "@/types/candidate";
+import toast from "react-hot-toast";
 
-export default function CreateElectionPage() {
+export default function Page() {
+    const token = Cookies.get("token") ?? null
     const [currentStep, setCurrentStep] = useState(1)
     const [isSubmitted, setIsSubmitted] = useState(false)
     const [showAddCandidateModal, setShowAddCandidateModal] = useState(false)
+    const { candidates, candidatesLoading, candidatesError, refetchCandidates } = useGetAllCandidates(token)
+    const [selectedCandidates, setSelectedCandidates] = useState<Candidate[]>([]);
+
+    const activeApprovedCandidates = candidates.filter(
+        candidate => candidate.active && candidate.approved
+    );
+
+    const handleCandidateSelect = (candidate: Candidate) => {
+        setSelectedCandidates(prev => {
+            const exists = prev.some(c => c.id === candidate.id);
+            if (exists) {
+                // Deselect: Remove candidate by ID
+                return prev.filter(c => c.id !== candidate.id);
+            } else {
+                // Select: Add candidate object
+                return [...prev, candidate];
+            }
+        });
+    };
 
     const [formData, setFormData] = useState({
         // Step 1: Basic Details
@@ -42,60 +66,34 @@ export default function CreateElectionPage() {
         endDate: "",
 
         // Step 2: Election Settings
-        votingMethod: "single-choice",
         eligibleDistricts: [] as string[],
-        minAge: "18",
-        requireVerification: true,
-        allowEarlyResults: false,
-        enableNotifications: true,
 
         // Step 3: Candidates
-        candidates: [] as Array<{
-            id: string
-            name: string
-            party: string
-            age: string
-            profession: string
-            manifesto: string
-            photo: string | null
-        }>,
+        candidates: [] as Candidate[]
     })
 
+    // new candidate state must match candidate type, but can use string for easier form handling
     const [newCandidate, setNewCandidate] = useState({
-        name: "",
-        party: "",
-        age: "",
+        fullName: "",
+        partyName: "",
+        age: "", // string for input, convert on add
         profession: "",
         manifesto: "",
-        photo: null as string | null,
+        nicBackImg: null as string | null,
+        nicFrontImg: null as string | null,
+        selfieImg: null as string | null,
+        isActive: true,
+        isApproved: false,
+        partyId: "",
+        electionId: "",
+        userId: "",
+        photo: null as string | null, // for compatibility only (not used in final object)
     })
 
     const districts = [
-        "Colombo",
-        "Kandy",
-        "Galle",
-        "Jaffna",
-        "Anuradhapura",
-        "Polonnaruwa",
-        "Kurunegala",
-        "Ratnapura",
-        "Badulla",
-        "Batticaloa",
-        "Ampara",
-        "Trincomalee",
-        "Kalutara",
-        "Gampaha",
-        "Matara",
-        "Hambantota",
-        "Monaragala",
-        "Kegalle",
-        "Puttalam",
-        "Vavuniya",
-        "Mullaitivu",
-        "Kilinochchi",
-        "Mannar",
-        "Nuwara Eliya",
-        "Matale",
+        "Colombo", "Kandy", "Galle", "Jaffna", "Anuradhapura", "Polonnaruwa", "Kurunegala", "Ratnapura", "Badulla",
+        "Batticaloa", "Ampara", "Trincomalee", "Kalutara", "Gampaha", "Matara", "Hambantota", "Monaragala", "Kegalle",
+        "Puttalam", "Vavuniya", "Mullaitivu", "Kilinochchi", "Mannar", "Nuwara Eliya", "Matale"
     ]
 
     const electionTypes = [
@@ -120,55 +118,116 @@ export default function CreateElectionPage() {
     }
 
     const handleAddCandidate = () => {
-        if (newCandidate.name && newCandidate.party) {
-            const candidate = {
-                ...newCandidate,
-                id: Date.now().toString(),
-                photo:
-                    newCandidate.photo ||
-                    `/placeholder.svg?height=100&width=100&text=${newCandidate.name
-                        .split(" ")
-                        .map((n) => n[0])
-                        .join("")}`,
+        if (newCandidate.fullName && newCandidate.partyName) {
+            const idNum = Date.now()
+            const candidate: Candidate = {
+                id: idNum,
+                age: Number(newCandidate.age) || 0,
+                createdAt: new Date().toISOString(),
+                fullName: newCandidate.fullName,
+                partyName: newCandidate.partyName,
+                active: !!newCandidate.isActive,
+                approved: !!newCandidate.isApproved,
+                manifesto: newCandidate.manifesto,
+                nicBackImg: newCandidate.nicBackImg || "",
+                nicFrontImg: newCandidate.nicFrontImg || "",
+                profession: newCandidate.profession,
+                selfieImg: newCandidate.selfieImg || "",
+                electionId: Number(newCandidate.electionId) || 0,
+                partyId: Number(newCandidate.partyId) || 0,
+                userId: Number(newCandidate.userId) || 0,
             }
-
             setFormData((prev) => ({
                 ...prev,
                 candidates: [...prev.candidates, candidate],
             }))
-
             setNewCandidate({
-                name: "",
-                party: "",
+                fullName: "",
+                partyName: "",
                 age: "",
                 profession: "",
                 manifesto: "",
+                nicBackImg: null,
+                nicFrontImg: null,
+                selfieImg: null,
+                isActive: true,
+                isApproved: false,
+                partyId: "",
+                electionId: "",
+                userId: "",
                 photo: null,
             })
-
             setShowAddCandidateModal(false)
         }
     }
 
-    const handleRemoveCandidate = (id: string) => {
+    const handleRemoveCandidate = (id: number) => {
         setFormData((prev) => ({
             ...prev,
             candidates: prev.candidates.filter((c) => c.id !== id),
         }))
     }
 
-    const handleSubmit = () => {
-        // Simulate election creation
-        console.log("Creating election:", formData)
-        setIsSubmitted(true)
-    }
+    const handleSubmit = async () => {
+        const payload = {
+            title: formData.title,
+            description: formData.description,
+            type: formData.type,
+            startDate: formData.startDate,
+            endDate: formData.endDate,
+            districts: formData.eligibleDistricts,
+            status: "NOT_STARTED",
+            candidates: selectedCandidates.map(candidate => ({
+                id: candidate.id,
+                electionId: candidate.electionId,
+                userId: candidate.userId,
+                fullName: candidate.fullName,
+                age: candidate.age,
+                profession: candidate.profession,
+                manifesto: candidate.manifesto,
+                partyName: candidate.partyName,
+                partyId: candidate.partyId,
+                selfieImg: candidate.selfieImg,
+                nicBackImg: candidate.nicBackImg,
+                nicFrontImg: candidate.nicFrontImg,
+                isActive: candidate.active,
+                isApproved: candidate.approved,
+                // ... add other fields your backend expects
+            }))
+            // createdAt: new Date().toISOString(), // if needed
+        };
+
+        try {
+            const response = await fetch("http://localhost:8080/api/v1/election/save", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${token}`, // If required
+                },
+                body: JSON.stringify(payload),
+            });
+
+            if (response.ok) {
+                const result = await response.json();
+                // Handle success
+                setIsSubmitted(true);
+                // Optionally show a message or use result
+            } else {
+                // Handle error
+                const error = await response.text();
+                alert("Error creating election: " + error);
+            }
+        } catch (err) {
+            toast.error(`Network error: ${(err as Error).message}`);
+        }
+    };
 
     const canProceedToStep2 = () => {
         return formData.title && formData.type && formData.description && formData.startDate && formData.endDate
     }
 
     const canProceedToStep3 = () => {
-        return formData.votingMethod && formData.eligibleDistricts.length > 0
+        return formData.eligibleDistricts.length > 0
     }
 
     const canSubmit = () => {
@@ -243,12 +302,7 @@ export default function CreateElectionPage() {
                                         description: "",
                                         startDate: "",
                                         endDate: "",
-                                        votingMethod: "single-choice",
                                         eligibleDistricts: [],
-                                        minAge: "18",
-                                        requireVerification: true,
-                                        allowEarlyResults: false,
-                                        enableNotifications: true,
                                         candidates: [],
                                     })
                                 }}
@@ -461,31 +515,6 @@ export default function CreateElectionPage() {
                             </CardHeader>
                             <CardContent className="space-y-6">
                                 <div className="space-y-4">
-                                    <Label>Voting Method *</Label>
-                                    <RadioGroup
-                                        value={formData.votingMethod}
-                                        onValueChange={(value) => handleInputChange("votingMethod", value)}
-                                    >
-                                        <div className="flex items-center space-x-2">
-                                            <RadioGroupItem value="single-choice" id="single" />
-                                            <Label htmlFor="single">Single Choice - Voters select one candidate</Label>
-                                        </div>
-                                        <div className="flex items-center space-x-2">
-                                            <RadioGroupItem value="multiple-choice" id="multiple" />
-                                            <Label htmlFor="multiple">Multiple Choice - Voters can select multiple candidates</Label>
-                                        </div>
-                                        <div className="flex items-center space-x-2">
-                                            <RadioGroupItem value="ranked-choice" id="ranked" />
-                                            <Label htmlFor="ranked">Ranked Choice - Voters rank candidates by preference</Label>
-                                        </div>
-                                        <div className="flex items-center space-x-2">
-                                            <RadioGroupItem value="approval" id="approval" />
-                                            <Label htmlFor="approval">Approval Voting - Voters approve/disapprove each candidate</Label>
-                                        </div>
-                                    </RadioGroup>
-                                </div>
-
-                                <div className="space-y-4">
                                     <Label>Eligible Districts * (Select at least one)</Label>
                                     <div className="grid grid-cols-3 gap-3 max-h-48 overflow-y-auto border rounded-lg p-4">
                                         {districts.map((district) => (
@@ -504,59 +533,15 @@ export default function CreateElectionPage() {
                                     <p className="text-sm text-gray-500">Selected: {formData.eligibleDistricts.length} districts</p>
                                 </div>
 
-                                <div className="grid grid-cols-2 gap-6">
-                                    <div className="space-y-2">
-                                        <Label htmlFor="minAge">Minimum Voting Age</Label>
-                                        <Select value={formData.minAge} onValueChange={(value) => handleInputChange("minAge", value)}>
-                                            <SelectTrigger>
-                                                <SelectValue />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                <SelectItem value="16">16 years</SelectItem>
-                                                <SelectItem value="18">18 years</SelectItem>
-                                                <SelectItem value="21">21 years</SelectItem>
-                                            </SelectContent>
-                                        </Select>
-                                    </div>
-                                </div>
-
-                                <div className="space-y-4">
-                                    <Label>Additional Settings</Label>
-                                    <div className="space-y-3">
-                                        <div className="flex items-center space-x-2">
-                                            <Checkbox
-                                                id="verification"
-                                                checked={formData.requireVerification}
-                                                onCheckedChange={(checked) => handleInputChange("requireVerification", checked)}
-                                            />
-                                            <Label htmlFor="verification">Require voter verification before voting</Label>
-                                        </div>
-                                        <div className="flex items-center space-x-2">
-                                            <Checkbox
-                                                id="earlyResults"
-                                                checked={formData.allowEarlyResults}
-                                                onCheckedChange={(checked) => handleInputChange("allowEarlyResults", checked)}
-                                            />
-                                            <Label htmlFor="earlyResults">Allow viewing partial results before election ends</Label>
-                                        </div>
-                                        <div className="flex items-center space-x-2">
-                                            <Checkbox
-                                                id="notifications"
-                                                checked={formData.enableNotifications}
-                                                onCheckedChange={(checked) => handleInputChange("enableNotifications", checked)}
-                                            />
-                                            <Label htmlFor="notifications">Send email notifications to voters</Label>
-                                        </div>
-                                    </div>
-                                </div>
-
                                 <div className="flex justify-between pt-6">
                                     <Button variant="outline" onClick={() => setCurrentStep(1)}>
                                         <ArrowLeft className="h-4 w-4 mr-2" />
                                         Back
                                     </Button>
                                     <Button
-                                        onClick={() => setCurrentStep(3)}
+                                        onClick={() => {
+                                            setCurrentStep(3)
+                                        }}
                                         disabled={!canProceedToStep3()}
                                         className="bg-blue-600 hover:bg-blue-700"
                                     >
@@ -567,7 +552,6 @@ export default function CreateElectionPage() {
                         </Card>
                     )}
 
-                    {/* Step 3: Candidates */}
                     {currentStep === 3 && (
                         <Card>
                             <CardHeader>
@@ -576,19 +560,19 @@ export default function CreateElectionPage() {
                                         <Users className="h-6 w-6 mr-2" />
                                         Election Candidates
                                     </div>
-                                    <Button onClick={() => setShowAddCandidateModal(true)}>
-                                        <Plus className="h-4 w-4 mr-2" />
-                                        Add Candidate
-                                    </Button>
                                 </CardTitle>
                                 <CardDescription>Add candidates who will participate in this election</CardDescription>
                             </CardHeader>
                             <CardContent className="space-y-6">
-                                {formData.candidates.length === 0 ? (
+                                {activeApprovedCandidates.length === 0 ? (
                                     <div className="text-center py-12 border-2 border-dashed border-gray-300 rounded-lg">
                                         <Users className="h-16 w-16 text-gray-400 mx-auto mb-4" />
-                                        <h3 className="text-lg font-semibold text-gray-700 mb-2">No candidates added yet</h3>
-                                        <p className="text-gray-500 mb-4">Add at least 2 candidates to proceed</p>
+                                        <h3 className="text-lg font-semibold text-gray-700 mb-2">
+                                            No candidates added yet
+                                        </h3>
+                                        <p className="text-gray-500 mb-4">
+                                            Add at least 2 candidates to proceed
+                                        </p>
                                         <Button onClick={() => setShowAddCandidateModal(true)}>
                                             <Plus className="h-4 w-4 mr-2" />
                                             Add First Candidate
@@ -596,53 +580,49 @@ export default function CreateElectionPage() {
                                     </div>
                                 ) : (
                                     <div className="grid gap-4">
-                                        {formData.candidates.map((candidate) => (
-                                            <Card key={candidate.id} className="p-4">
-                                                <div className="flex items-start space-x-4">
-                                                    <img
-                                                        src={
-                                                            candidate.photo ||
-                                                            `/placeholder.svg?height=80&width=80&text=${candidate.name
-                                                                .split(" ")
-                                                                .map((n) => n[0])
-                                                                .join("")}`
-                                                        }
-                                                        alt={candidate.name}
-                                                        className="w-20 h-20 rounded-lg object-cover"
-                                                    />
-                                                    <div className="flex-1">
-                                                        <div className="flex justify-between items-start">
-                                                            <div>
-                                                                <h3 className="text-lg font-semibold">{candidate.name}</h3>
-                                                                <p className="text-sm text-gray-600">{candidate.party}</p>
-                                                                <p className="text-sm text-gray-500">
-                                                                    Age: {candidate.age} • {candidate.profession}
-                                                                </p>
-                                                            </div>
-                                                            <div className="flex space-x-2">
-                                                                <Button variant="outline" size="sm">
-                                                                    <Edit className="h-4 w-4" />
-                                                                </Button>
-                                                                <Button variant="outline" size="sm" onClick={() => handleRemoveCandidate(candidate.id)}>
-                                                                    <Trash2 className="h-4 w-4" />
-                                                                </Button>
-                                                            </div>
+                                        {activeApprovedCandidates.map(candidate => (
+                                            <Card key={candidate.id} className="p-4 flex items-center gap-4">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={selectedCandidates.some(c => c.id === candidate.id)}
+                                                    onChange={() => handleCandidateSelect(candidate)}
+                                                    className="h-5 w-5"
+                                                />
+                                                <div className="flex-1">
+                                                    <div className="flex items-center space-x-4">
+                                                        <img
+                                                            src={
+                                                                candidate.selfieImg ||
+                                                                `/placeholder.svg?height=80&width=80&text=${candidate.fullName
+                                                                    .split(" ")
+                                                                    .map(n => n[0])
+                                                                    .join("")}`
+                                                            }
+                                                            alt={candidate.fullName}
+                                                            className="w-20 h-20 rounded-lg object-cover"
+                                                        />
+                                                        <div>
+                                                            <h3 className="text-lg font-semibold">{candidate.fullName}</h3>
+                                                            <p className="text-sm text-gray-600">{candidate.partyName} {candidate.partySymbol}</p>
+                                                            <p className="text-sm text-gray-500">
+                                                                Age: {candidate.age} • {candidate.profession}
+                                                            </p>
                                                         </div>
-                                                        {candidate.manifesto && (
-                                                            <p className="text-sm text-gray-700 mt-2 line-clamp-2">{candidate.manifesto}</p>
-                                                        )}
                                                     </div>
+                                                    {candidate.manifesto && (
+                                                        <p className="text-sm text-gray-700 mt-2 line-clamp-2">{candidate.manifesto}</p>
+                                                    )}
                                                 </div>
                                             </Card>
                                         ))}
                                     </div>
                                 )}
 
-                                {formData.candidates.length > 0 && (
+                                {activeApprovedCandidates.length > 0 && (
                                     <Alert>
                                         <Info className="h-4 w-4" />
                                         <AlertDescription>
-                                            You have added {formData.candidates.length} candidate(s). You can add more or proceed to review.
+                                            You have added {activeApprovedCandidates.length} candidate(s). You can add more or proceed to review.
                                         </AlertDescription>
                                     </Alert>
                                 )}
@@ -653,8 +633,11 @@ export default function CreateElectionPage() {
                                         Back
                                     </Button>
                                     <Button
-                                        onClick={() => setCurrentStep(4)}
-                                        disabled={!canSubmit()}
+                                        onClick={() => {
+                                            setCurrentStep(4)
+                                            formData.candidates = selectedCandidates
+                                        }}
+                                        disabled={activeApprovedCandidates.length < 2}
                                         className="bg-blue-600 hover:bg-blue-700"
                                     >
                                         Continue to Review
@@ -663,6 +646,7 @@ export default function CreateElectionPage() {
                             </CardContent>
                         </Card>
                     )}
+
 
                     {/* Step 4: Review */}
                     {currentStep === 4 && (
@@ -703,33 +687,10 @@ export default function CreateElectionPage() {
                                                     <p className="text-sm">{new Date(formData.endDate).toLocaleString()}</p>
                                                 </div>
                                             </div>
-                                        </CardContent>
-                                    </Card>
-
-                                    <Card>
-                                        <CardHeader>
-                                            <CardTitle className="text-lg">Election Settings</CardTitle>
-                                        </CardHeader>
-                                        <CardContent className="space-y-3">
-                                            <div>
-                                                <Label className="text-sm text-gray-500">Voting Method</Label>
-                                                <p className="font-medium capitalize">{formData.votingMethod.replace("-", " ")}</p>
-                                            </div>
                                             <div>
                                                 <Label className="text-sm text-gray-500">Eligible Districts</Label>
-                                                <p className="text-sm">{formData.eligibleDistricts.length} districts selected</p>
-                                            </div>
-                                            <div>
-                                                <Label className="text-sm text-gray-500">Minimum Age</Label>
-                                                <p className="font-medium">{formData.minAge} years</p>
-                                            </div>
-                                            <div className="space-y-1">
-                                                <Label className="text-sm text-gray-500">Additional Settings</Label>
-                                                <div className="space-y-1 text-sm">
-                                                    <p>✓ Require verification: {formData.requireVerification ? "Yes" : "No"}</p>
-                                                    <p>✓ Early results: {formData.allowEarlyResults ? "Allowed" : "Not allowed"}</p>
-                                                    <p>✓ Notifications: {formData.enableNotifications ? "Enabled" : "Disabled"}</p>
-                                                </div>
+                                                <p className="text-sm">{formData.eligibleDistricts.length} districts
+                                                    selected</p>
                                             </div>
                                         </CardContent>
                                     </Card>
@@ -741,22 +702,23 @@ export default function CreateElectionPage() {
                                     </CardHeader>
                                     <CardContent>
                                         <div className="grid md:grid-cols-2 gap-4">
-                                            {formData.candidates.map((candidate) => (
+                                            {selectedCandidates.map((candidate) => (
                                                 <div key={candidate.id} className="flex items-center space-x-3 p-3 border rounded-lg">
                                                     <img
                                                         src={
-                                                            candidate.photo ||
-                                                            `/placeholder.svg?height=50&width=50&text=${candidate.name
+                                                            candidate.selfieImg ||
+                                                            `/placeholder.svg?height=50&width=50&text=${candidate.fullName
                                                                 .split(" ")
                                                                 .map((n) => n[0])
                                                                 .join("")}`
                                                         }
-                                                        alt={candidate.name}
+                                                        alt={candidate.fullName}
                                                         className="w-12 h-12 rounded-lg object-cover"
                                                     />
                                                     <div>
-                                                        <p className="font-medium">{candidate.name}</p>
-                                                        <p className="text-sm text-gray-600">{candidate.party}</p>
+                                                        <p className="font-medium">{candidate.fullName}</p>
+                                                        <p className="text-sm text-gray-600">{candidate.partyName}</p>
+                                                        <p className="text-sm text-gray-600">{candidate.partySymbol}</p>
                                                     </div>
                                                 </div>
                                             ))}
@@ -807,8 +769,8 @@ export default function CreateElectionPage() {
                                     <Input
                                         id="candidateName"
                                         placeholder="John Silva"
-                                        value={newCandidate.name}
-                                        onChange={(e) => setNewCandidate((prev) => ({ ...prev, name: e.target.value }))}
+                                        value={newCandidate.fullName}
+                                        onChange={(e) => setNewCandidate((prev) => ({ ...prev, fullName: e.target.value }))}
                                     />
                                 </div>
                                 <div className="space-y-2">
@@ -816,8 +778,8 @@ export default function CreateElectionPage() {
                                     <Input
                                         id="candidateParty"
                                         placeholder="Democratic Party"
-                                        value={newCandidate.party}
-                                        onChange={(e) => setNewCandidate((prev) => ({ ...prev, party: e.target.value }))}
+                                        value={newCandidate.partyName}
+                                        onChange={(e) => setNewCandidate((prev) => ({ ...prev, partyName: e.target.value }))}
                                     />
                                 </div>
                             </div>
@@ -867,7 +829,7 @@ export default function CreateElectionPage() {
                                 <Button variant="outline" onClick={() => setShowAddCandidateModal(false)}>
                                     Cancel
                                 </Button>
-                                <Button onClick={handleAddCandidate} disabled={!newCandidate.name || !newCandidate.party}>
+                                <Button onClick={handleAddCandidate} disabled={!newCandidate.fullName || !newCandidate.partyName}>
                                     Add Candidate
                                 </Button>
                             </div>
