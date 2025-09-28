@@ -13,6 +13,8 @@ import Link from "next/link"
 import Cookies from "js-cookie";
 import { useTokenValidation } from "@/hooks/useTokenValidation";
 import {signInWithGoogle} from "@/components/firebase";
+import PaymentButton from "@/components/ui/paymentButton";
+import toast from "react-hot-toast";
 
 export default function LandingPage() {
   const { isValid } = useTokenValidation();
@@ -54,7 +56,7 @@ export default function LandingPage() {
       console.log(res);
       const data = await res.json();
 
-      alert(data.message);
+      toast.success(data.message);
 
       if (data.status === 201) {
         window.location.reload();
@@ -102,7 +104,7 @@ export default function LandingPage() {
       Cookies.set("token", data.data.accessToken);
       Cookies.set("username", data.data.username);
 
-      alert(data.message);
+      toast.success(data.message);
 
       if (data.data.role === "USER") {
         window.location.href = `/checkVoter`;
@@ -270,32 +272,33 @@ export default function LandingPage() {
             </div>
 
             {/* Quick Access Links */}
-            <div className="flex flex-wrap gap-4 mt-8">
-              <Link href="/voter-dashboard">
-                <Button variant="outline" className="flex items-center space-x-2 bg-transparent">
-                  <Users className="h-4 w-4" />
-                  <span>Voter Portal</span>
-                </Button>
-              </Link>
-              <Link href="/candidates">
-                <Button variant="outline" className="flex items-center space-x-2 bg-transparent">
-                  <User className="h-4 w-4" />
-                  <span>View Candidates</span>
-                </Button>
-              </Link>
-              <Link href="/admin">
-                <Button variant="outline" className="flex items-center space-x-2 bg-transparent">
-                  <Lock className="h-4 w-4" />
-                  <span>Admin Portal</span>
-                </Button>
-              </Link>
-              <Link href="/results">
-                <Button variant="outline" className="flex items-center space-x-2 bg-transparent">
-                  <BarChart3 className="h-4 w-4" />
-                  <span>Live Results</span>
-                </Button>
-              </Link>
-            </div>
+            {/*<div className="flex flex-wrap gap-4 mt-8">*/}
+            {/*  <Link href="/voter-dashboard">*/}
+            {/*    <Button variant="outline" className="flex items-center space-x-2 bg-transparent">*/}
+            {/*      <Users className="h-4 w-4" />*/}
+            {/*      <span>Voter Portal</span>*/}
+            {/*    </Button>*/}
+            {/*  </Link>*/}
+            {/*  <Link href="/candidates">*/}
+            {/*    <Button variant="outline" className="flex items-center space-x-2 bg-transparent">*/}
+            {/*      <User className="h-4 w-4" />*/}
+            {/*      <span>View Candidates</span>*/}
+            {/*    </Button>*/}
+            {/*  </Link>*/}
+            {/*  <Link href="/admin">*/}
+            {/*    <Button variant="outline" className="flex items-center space-x-2 bg-transparent">*/}
+            {/*      <Lock className="h-4 w-4" />*/}
+            {/*      <span>Admin Portal</span>*/}
+            {/*    </Button>*/}
+            {/*  </Link>*/}
+            {/*  <Link href="/results">*/}
+            {/*    <Button variant="outline" className="flex items-center space-x-2 bg-transparent">*/}
+            {/*      <BarChart3 className="h-4 w-4" />*/}
+            {/*      <span>Live Results</span>*/}
+            {/*    </Button>*/}
+            {/*  </Link>*/}
+            {/*</div>*/}
+            <PaymentButton />
           </div>
 
           {/* Login/Register Forms */}

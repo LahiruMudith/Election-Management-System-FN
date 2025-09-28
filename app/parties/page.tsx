@@ -152,7 +152,7 @@ export default function PartiesPage() {
             }
         };
         fetchParties();
-    }, [token]);
+    }, [parties.length]); // Reload if parties length changes (add/delete)
 
     const [newParty, setNewParty] = useState({
         name: "",

@@ -12,8 +12,8 @@ import { useTokenValidation } from "@/hooks/useTokenValidation";
 import Cookies from "js-cookie";
 import { useVoterDetails } from "@/hooks/getVoterDetails";
 import toast from "react-hot-toast";
-import {useElectionDetails} from "@/hooks/getElectionDetails";
 import LogoutButton from "@/components/ui/logoutButton";
+import {useElectionDetails} from "@/hooks/getAllElections"
 
 
 export default function VoterDashboard() {
@@ -291,7 +291,7 @@ export default function VoterDashboard() {
                     ) : electionError ? (
                         <div className="text-red-600">Error loading elections: {electionError}</div>
                     ) : (
-                        activeElections.map((election) => (
+                        fetchedElections.map((election) => (
                             <div key={election.id} className="border rounded-lg p-6">
                               <div className="flex justify-between items-start mb-4">
                                 <div>

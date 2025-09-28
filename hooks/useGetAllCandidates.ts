@@ -7,7 +7,7 @@ interface ApiEnvelope<T> {
     data: T;
 }
 
-export function useGetAllCandidates(token: string | null) {
+export function useGetAllCandidates(token: any) {
     const [candidates, setCandidates] = useState<Candidate[]>([]);
     const [loading, setLoading] = useState<boolean>(true);
     const [error, setError] = useState<string | null>(null);

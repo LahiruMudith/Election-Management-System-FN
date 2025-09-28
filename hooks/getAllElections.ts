@@ -32,24 +32,24 @@ export function useElectionDetails(token: string | null) {
             return;
         }
 
-        // fetch(`http://localhost:8080/api/v1/election/getAll`, {
-        //     headers: {
-        //         Authorization: `Bearer ${token}`,
-        //     },
-        //     credentials: "include",
-        // })
-        //     .then((res) => {
-        //         if (!res.ok) throw new Error("Failed to fetch election details");
-        //         return res.json();
-        //     })
-        //     .then((data) => {
-        //         setElections(Array.isArray(data.data) ? data.data : []);
-        //         setLoading(false);
-        //     })
-        //     .catch((err) => {
-        //         setError(err.message);
-        //         setLoading(false);
-        //     });
+        fetch(`http://localhost:8080/api/v1/election/getAll`, {
+            headers: {
+                Authorization: `Bearer ${token}`,
+            },
+            credentials: "include",
+        })
+            .then((res) => {
+                if (!res.ok) throw new Error("Failed to fetch election details");
+                return res.json();
+            })
+            .then((data) => {
+                setElections(Array.isArray(data.data) ? data.data : []);
+                setLoading(false);
+            })
+            .catch((err) => {
+                setError(err.message);
+                setLoading(false);
+            });
     }, [token]);
 
     return { elections, loading, error };

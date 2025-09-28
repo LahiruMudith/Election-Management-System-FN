@@ -19,6 +19,7 @@ import Cookies from "js-cookie";
 export default function RegisterCandidatePage() {
   const token = Cookies.get("token") ?? null;
   const [showWebcam, setShowWebcam] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const [parties, setParties] = useState<Party[]>([]);
   const [currentStep, setCurrentStep] = useState(1)
   const [formData, setFormData] = useState({
@@ -96,12 +97,16 @@ export default function RegisterCandidatePage() {
     data.append("idBack", formData.idBack as File);
     data.append("selfie", formData.selfie as File);
 
+    setIsLoading(true);
+
+    // Show the pending toast and store its id
+    const toastId = toast.loading("Uploading and registering candidate...");
+
     try {
       const response = await fetch("http://localhost:8080/api/log/registerCandidate", {
         method: "POST",
         body: data,
         credentials: 'include',
-        // DO NOT set Content-Type, browser will set correct boundary
       });
 
       let responseData = null;
@@ -121,20 +126,23 @@ export default function RegisterCandidatePage() {
             : (responseData && responseData.message)
                 ? responseData.message
                 : "Failed to submit registration. Please try again.";
-        toast.error(errorMsg);
+        toast.error(errorMsg, { id: toastId }); // Update the pending toast to error
+        setIsLoading(false);
         return;
       }
 
       const successMsg = (responseData && responseData.message)
           ? responseData.message
           : "Candidate registered successfully!";
-      toast.success(successMsg);
+      toast.success(successMsg, { id: toastId }); // Update the pending toast to success
       setIsSubmitted(true);
     } catch (err) {
       console.log(err as Error)
-      toast.error("Submission failed: " + (err as Error).message);
+      toast.error("Submission failed: " + (err as Error).message, { id: toastId }); // Update the pending toast to error
+    } finally {
+      setIsLoading(false);
     }
-  };
+  }
 
   const canProceedToStep2 = () => {
     return formData.email && formData.username && formData.password && formData.confirmPassword

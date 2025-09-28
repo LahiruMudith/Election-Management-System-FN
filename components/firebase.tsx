@@ -2,6 +2,7 @@
 import { initializeApp } from "firebase/app";
 import { getAuth, GoogleAuthProvider, signInWithPopup } from "firebase/auth";
 import Cookies from "js-cookie";
+import toast from "react-hot-toast";
 
 
 // TODO: Add SDKs for Firebase products that you want to use
@@ -53,17 +54,11 @@ export const signInWithGoogle = () => {
             .then((data) => {
                 console.log(data);
 
-                Cookies.set("role", data.data.role);
-                Cookies.set("token", data.data.accessToken);
-                Cookies.set("username", data.data.username);
+                // Cookies.set("role", data.data.role);
+                // Cookies.set("token", data.data.accessToken);
+                // Cookies.set("username", data.data.username);
 
-                alert(data.message);
-
-                if (data.status === 200) {
-                    window.location.href = "/voter-dashboard";
-                } else {
-                    console.log("Error:", data.message);
-                }
+                toast.success(data.message);
             })
             .catch((error) => {
                 console.log("Error:", error);

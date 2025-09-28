@@ -4,6 +4,7 @@ import { GeistMono } from 'geist/font/mono'
 import { Analytics } from '@vercel/analytics/next'
 import './globals.css'
 import { Toaster } from 'react-hot-toast'
+import Script from "next/script" // <-- Import Script
 
 export const metadata: Metadata = {
     title: 'v0 App',
@@ -26,6 +27,11 @@ html {
   --font-mono: ${GeistMono.variable};
 }
         `}</style>
+            {/* PayHere SDK script loaded before any interactive code */}
+            <Script
+                src="https://www.payhere.lk/lib/payhere.js"
+                strategy="beforeInteractive"
+            />
         </head>
         <body>
         <Toaster position="top-center" reverseOrder={false} />

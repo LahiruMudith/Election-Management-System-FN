@@ -46,9 +46,7 @@ type ActiveList = "pending" | "verified" | "rejected" | null;
 const fmt = new Intl.NumberFormat("en-US");
 
 export default function AdminDashboard() {
-  const token = Cookies.get("token") ?? null;
-
-
+  const token: string | undefined = Cookies.get("token") || undefined;
   const { isValid } = useTokenValidation();
   const [activeTab, setActiveTab] = useState("overview")
   const { voters, loading: votersLoading, error: votersError } = getAllVoters(Cookies.get("token") ?? null);
@@ -58,7 +56,6 @@ export default function AdminDashboard() {
   // const { images, loading: imagesLoading, error: imagesError, reload: reloadImages } = useVoterImages(selectedVoter?.nicFrontUrl, selectedVoter?.nicBackUrl, selectedVoter?.selfieUrl, Cookies.get("token") ?? null);
   const { candidates, candidatesLoading, candidatesError, refetchCandidates } = useGetAllCandidates(token);
   let selectedCandidateUsername = null
-  const { images:candidateImages, loading: candidateImagesLoading, error: candidateImagesError } = getCandidateImages(selectedCandidateUsername, token);
 
 
   const [candidateActiveList, setCandidateActiveList] =
@@ -755,7 +752,12 @@ export default function AdminDashboard() {
                                             variant="outline"
                                             className="flex items-center gap-2 border-green-600 text-green-700 hover:bg-green-600 hover:text-white hover:border-green-700 transition"
                                             onClick={() => {
-                                              // handleApprove(c)
+                                              showVerifyCandidateToast({
+                                                action: "verify",
+                                                candidate: c,
+                                                token: Cookies.get("token"),
+                                                onAction: () => handleCandidateApprove(c, token), // must return a Promise
+                                              })
                                             }}
                                         >
                                           Approve
@@ -769,7 +771,12 @@ export default function AdminDashboard() {
                                             variant="outline"
                                             className="flex items-center gap-2 border-red-600 text-red-700 hover:bg-red-600 hover:text-white hover:border-red-700 transition"
                                             onClick={() => {
-                                              // handleReject(c)
+                                              showVerifyCandidateToast({
+                                                action: "reject",
+                                                candidate: c,
+                                                token: Cookies.get("token"),
+                                                onAction: () => handleCandidateApprove(c, token), // must return a Promise
+                                              })
                                             }}
                                         >
                                           Reject
@@ -867,9 +874,9 @@ export default function AdminDashboard() {
                               {/* NIC Front */}
                               <div>
                                 <h3 className="text-sm font-semibold mb-2 text-gray-700">NIC Front</h3>
-                                {buildCandidateImgSrc(candidateImages.nicFrontUrl) ? (
+                                {selectedCandidate.nicFrontImg ? (
                                     <img
-                                        src={buildCandidateImgSrc(candidateImages.nicFrontUrl)}
+                                        src={selectedCandidate.nicFrontImg}
                                         alt="NIC Front"
                                         className="w-full h-44 object-cover rounded border cursor-zoom-in hover:opacity-90 transition"
                                         onClick={() =>
@@ -886,9 +893,9 @@ export default function AdminDashboard() {
                               {/* NIC Back */}
                               <div>
                                 <h3 className="text-sm font-semibold mb-2 text-gray-700">NIC Back</h3>
-                                {buildCandidateImgSrc(candidateImages.nicBackUrl) ? (
+                                {selectedCandidate.nicBackImg ? (
                                     <img
-                                        src={buildCandidateImgSrc(candidateImages.nicBackUrl)}
+                                        src={buildCandidateImgSrc(selectedCandidate.nicBackImg)}
                                         alt="NIC Back"
                                         className="w-full h-44 object-cover rounded border cursor-zoom-in hover:opacity-90 transition"
                                         onClick={() =>
@@ -905,9 +912,9 @@ export default function AdminDashboard() {
                               {/* Selfie */}
                               <div>
                                 <h3 className="text-sm font-semibold mb-2 text-gray-700">Selfie</h3>
-                                {buildCandidateImgSrc(candidateImages.nicBackUrl) ? (
+                                {selectedCandidate.selfieImg ? (
                                     <img
-                                        src={buildCandidateImgSrc(candidateImages.nicBackUrl)}
+                                        src={selectedCandidate.selfieImg}
                                         alt="Selfie"
                                         className="w-44 h-44 object-cover rounded-full border mx-auto cursor-zoom-in hover:opacity-90 transition"
                                         onClick={() =>
@@ -994,7 +1001,7 @@ export default function AdminDashboard() {
                               : "bg-red-100 text-red-700")
                   }
               >
-                {c.status.toLowerCase()}
+                {c.status?.toLowerCase() || "-"}
               </span>
                           <Button
                               variant="outline"
@@ -1192,7 +1199,7 @@ export default function AdminDashboard() {
                                                     action: "verify",
                                                     voter: v,
                                                     token: Cookies.get("token"),
-                                                    onAction: handleVerify, // must return a Promise
+                                                    onAction: () => handleVoterVerify(v, token), // must return a Promise
                                                   })
                                               }
                                           >
@@ -1212,7 +1219,7 @@ export default function AdminDashboard() {
                                                     action: "reject",
                                                     voter: v,
                                                     token: Cookies.get("token"),
-                                                    onAction: handleReject, // must return a Promise
+                                                    onAction: () => handleVoterReject(v, token) // must return a Promise
                                                   })
                                               }
                                           >
@@ -1584,6 +1591,13 @@ type ActionOptions = {
   onAction: (voter: Voter, token?: string) => Promise<any>;
 };
 
+type candidateActionOptions = {
+  action: "verify" | "reject";
+  candidate: Candidate;
+  token?: string;
+  onAction: (cadidate: Candidate, token?: string) => Promise<any>;
+};
+
 function showVerifyToast({ action, voter, token, onAction }: ActionOptions) {
   const actionLabel = action === "verify" ? "Verify" : "Reject";
   const color = action === "reject" ? "red" : "green";
@@ -1643,11 +1657,70 @@ function showVerifyToast({ action, voter, token, onAction }: ActionOptions) {
   );
 }
 
+function showVerifyCandidateToast({ action, candidate, token, onAction }: candidateActionOptions) {
+  const actionLabel = action === "verify" ? "Verify" : "Reject";
+  const color = action === "reject" ? "red" : "green";
+  const message =
+      action === "verify"
+          ? `Are you sure you want to verify`
+          : `Are you sure you want to reject`;
+
+  toast(
+      (t) => (
+          <div className="flex flex-col items-center justify-center min-w-[240px]">
+        <span className="mb-2 text-center">
+          {message} <b>{candidate.fullName}</b>?
+        </span>
+            <div className="flex gap-2 mt-2">
+              <button
+                  className={`px-3 py-1 bg-${color}-600 text-white rounded hover:bg-${color}-700 flex items-center gap-2`}
+                  onClick={() => {
+                    toast.dismiss(t.id);
+                    toast.promise(
+                        onAction(candidate, token ?? Cookies.get("token")),
+                        {
+                          loading: `${actionLabel}ing...`,
+                          success: () => {
+                            // Refresh page after success
+                            setTimeout(() => window.location.reload(), 500); // short delay for user to see toast
+                            return <b>Voter {actionLabel.toLowerCase()}ed!</b>;
+                          },
+                          error: (err) =>
+                              err instanceof Error
+                                  ? err.message
+                                  : typeof err === "string"
+                                      ? err
+                                      : `Could not ${actionLabel.toLowerCase()}.`,
+                        },
+                        { position: "top-center" }
+                    );
+                  }}
+              >
+                <BookCheck className="text-xl" />
+                Yes, {actionLabel}
+              </button>
+              <button
+                  className="px-3 py-1 bg-gray-300 rounded hover:bg-gray-400"
+                  onClick={() => toast.dismiss(t.id)}
+              >
+                No
+              </button>
+            </div>
+          </div>
+      ),
+      {
+        duration: 6000,
+        position: "top-center",
+        style: { minWidth: "280px" },
+      }
+  );
+}
+
 /**
  * Verifies the voter by calling the backend.
  * Returns a promise for toast.promise.
  */
-export async function handleVerify(
+async function handleVoterVerify(
     voter: Voter,
     token?: string
 ): Promise<any> {
@@ -1683,7 +1756,7 @@ export async function handleVerify(
   }
 }
 
-export async function handleReject(
+async function handleVoterReject(
     voter: Voter,
     token?: string
 ): Promise<any> {
@@ -1697,6 +1770,74 @@ export async function handleReject(
   try {
     const res = await fetch(
         `http://localhost:8080/api/v1/voter/reject/${voter.id}`,
+        {
+          method: "PATCH", // or "POST" depending on your API
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          credentials: "include",
+        }
+    );
+    if (!res.ok) {
+      const errorJson = await res.json().catch(() => ({}));
+      throw new Error(errorJson.message || `Failed (${res.status})`);
+    }
+    return res.json();
+  } catch (err) {
+    throw err;
+  }
+}
+
+async function handleCandidateApprove(
+    candidate: Candidate,
+    token?: string
+): Promise<any> {
+  if (!candidate?.id) {
+    throw new Error("No candidate ID found!");
+  }
+  if (!token) {
+    token = Cookies.get("token") ?? "";
+    if (!token) throw new Error("No auth token found!");
+  }
+
+  try {
+    const res = await fetch(
+        `http://localhost:8080/api/v1/candidate/verify/${candidate.id}`,
+        {
+          method: "PATCH", // or "POST" based on your backend API
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          credentials: "include",
+        }
+    );
+    if (!res.ok) {
+      const errorJson = await res.json().catch(() => ({}));
+      throw new Error(errorJson.message || `Failed (${res.status})`);
+    }
+    toast("Candidate verified successfully!");
+    return res.json();
+  } catch (err) {
+    throw err;
+  }
+}
+
+async function handleCandidateReject(
+    candidate: Candidate,
+    token?: string
+): Promise<any> {
+  if (!candidate?.id) {
+    throw new Error("No voter ID found!");
+  }
+  if (!token) {
+    throw new Error("No auth token found!");
+  }
+
+  try {
+    const res = await fetch(
+        `http://localhost:8080/api/v1/candidate/verify/${candidate.id}`,
         {
           method: "PATCH", // or "POST" depending on your API
           headers: {

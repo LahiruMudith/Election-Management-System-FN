@@ -250,15 +250,6 @@ export default function Page() {
                             <h3 className="font-semibold mb-2">Election Details:</h3>
                             <div className="space-y-2 text-sm">
                                 <div className="flex justify-between">
-                                    <span>Election ID:</span>
-                                    <span className="font-mono">
-                    ELC-2024-
-                                        {Math.floor(Math.random() * 10000)
-                                            .toString()
-                                            .padStart(4, "0")}
-                  </span>
-                                </div>
-                                <div className="flex justify-between">
                                     <span>Title:</span>
                                     <span>{formData.title}</span>
                                 </div>
@@ -273,14 +264,18 @@ export default function Page() {
                                 <div className="flex justify-between">
                                     <span>Status:</span>
                                     <Badge variant="outline" className="bg-blue-50 text-blue-700">
-                                        Draft
+                                        NOT_STARTED
                                     </Badge>
+                                </div>
+                                <div className="flex justify-between">
+                                    <span>Districts:</span>
+                                    <span>{formData.eligibleDistricts.length}</span>
                                 </div>
                             </div>
                         </div>
 
                         <Alert>
-                            <Info className="h-4 w-4" />
+                            <Info className="h-4 w-4"/>
                             <AlertDescription>
                                 Your election has been created in draft mode. You can review and activate it from the admin dashboard.
                             </AlertDescription>
@@ -573,10 +568,6 @@ export default function Page() {
                                         <p className="text-gray-500 mb-4">
                                             Add at least 2 candidates to proceed
                                         </p>
-                                        <Button onClick={() => setShowAddCandidateModal(true)}>
-                                            <Plus className="h-4 w-4 mr-2" />
-                                            Add First Candidate
-                                        </Button>
                                     </div>
                                 ) : (
                                     <div className="grid gap-4">
