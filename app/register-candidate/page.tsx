@@ -149,7 +149,7 @@ export default function RegisterCandidatePage() {
   }
 
   const canProceedToStep3 = () => {
-    return formData.fullName && formData.age && formData.profession && formData.manifesto
+    return formData.fullName && formData.age && formData.profession && formData.manifesto && formData.partyId
   }
 
   const canSubmit = () => {
@@ -235,7 +235,7 @@ export default function RegisterCandidatePage() {
 
             <div className="space-y-2">
               <Link href="/">
-                <Button className="w-full">Return to Home</Button>
+                <Button className="w-full">Return to Login</Button>
               </Link>
             </div>
           </CardContent>
